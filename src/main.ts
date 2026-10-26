@@ -42,7 +42,6 @@ let currentLevel = Math.min(
 let game = new Game(currentLevel);
 let busy = false;
 let toastTimeout: ReturnType<typeof setTimeout>;
-let focusBeforeDialog: HTMLElement | null = null;
 
 app.innerHTML = `
   <div class="landscape" aria-hidden="true"></div><div class="landscape-wash" aria-hidden="true"></div>
@@ -221,10 +220,6 @@ function toast(message: string) {
   toastTimeout = setTimeout(() => node.classList.remove("visible"), 3200);
 }
 function showDialog(html: string, setup?: () => void) {
-  focusBeforeDialog =
-    document.activeElement instanceof HTMLElement
-      ? document.activeElement
-      : null;
   element("modal-content").innerHTML = html;
   if (!modal.open) modal.showModal();
   setup?.();
@@ -232,9 +227,8 @@ function showDialog(html: string, setup?: () => void) {
 function closeDialog() {
   modal.close();
 }
-modal.addEventListener("close", () => {
-  focusBeforeDialog?.focus();
-});
+// Native dialog focus restoration runs before the asynchronous close event.
+// Repeating it in that event can steal focus from a card the player has just selected.
 element("modal-close").addEventListener("click", closeDialog);
 modal.addEventListener("click", (event) => {
   if (event.target === modal) {

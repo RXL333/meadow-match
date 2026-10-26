@@ -91,10 +91,22 @@ test("keyboard navigation keeps help accessible and respects system reduced moti
     () => (window as DebugWindow).__MEADOW__.getState().solution[0],
   );
   await page.locator(`.board-tile[data-id="${first}"]`).focus();
+  // Closing a native dialog must not steal focus on the following render frame.
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+  );
+  await page.locator("#modal").dispatchEvent("close");
+  await expect(page.locator(`.board-tile[data-id="${first}"]`)).toBeFocused();
   await page.keyboard.press("Enter");
   await page.waitForFunction(
     () => !(window as DebugWindow).__MEADOW__.isBusy(),
   );
+  expect(
+    await page.evaluate(
+      () => (window as DebugWindow).__MEADOW__.getState().moves,
+    ),
+  ).toBe(1);
   await expect(page.locator(".board-tile.available:focus")).toHaveCount(1);
   await page.keyboard.press("Space");
   await page.waitForFunction(
