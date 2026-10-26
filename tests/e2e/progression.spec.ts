@@ -87,4 +87,23 @@ test("keyboard navigation keeps help accessible and respects system reduced moti
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).not.toBeVisible();
   await expect(page.getByRole("button", { name: "玩法与设置" })).toBeFocused();
+  const first = await page.evaluate(
+    () => (window as DebugWindow).__MEADOW__.getState().solution[0],
+  );
+  await page.locator(`.board-tile[data-id="${first}"]`).focus();
+  await page.keyboard.press("Enter");
+  await page.waitForFunction(
+    () => !(window as DebugWindow).__MEADOW__.isBusy(),
+  );
+  await expect(page.locator(".board-tile.available:focus")).toHaveCount(1);
+  await page.keyboard.press("Space");
+  await page.waitForFunction(
+    () => !(window as DebugWindow).__MEADOW__.isBusy(),
+  );
+  expect(
+    await page.evaluate(
+      () => (window as DebugWindow).__MEADOW__.getState().moves,
+    ),
+  ).toBe(2);
+  await expect(page.locator(".board-tile.available:focus")).toHaveCount(1);
 });

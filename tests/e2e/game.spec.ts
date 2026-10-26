@@ -60,6 +60,12 @@ test("desktop loads the complete original visual without broken assets or browse
   expect(assets).toHaveLength(2);
   expect(assets.every((asset) => asset.loaded)).toBe(true);
   await page.evaluate(() => document.fonts.ready);
+  await page
+    .locator(".game-card")
+    .screenshot({
+      path: "test-results/board-irregular.png",
+      animations: "disabled",
+    });
   await page.screenshot({
     path: "test-results/desktop.png",
     fullPage: true,

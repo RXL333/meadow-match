@@ -490,6 +490,21 @@ h3 {
 .board-tile.available {
   cursor: pointer;
 }
+.board-tile.just-uncovered {
+  animation: uncover 280ms ease-out;
+}
+@keyframes uncover {
+  from {
+    filter: brightness(1.12);
+    box-shadow:
+      0 4px 0 #cec7a9,
+      0 0 0 3px #b5c58a66,
+      0 7px 12px #4d593122;
+  }
+  to {
+    filter: brightness(1);
+  }
+}
 .board-tile.available:hover {
   transform: translateY(-4px);
   box-shadow:

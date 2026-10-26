@@ -102,13 +102,19 @@ function tileHTML(id: number, className: string, disabled = false): string {
   return `<button type="button" class="tile ${className}" data-id="${id}" data-kind="${tile.kind}" aria-label="${KINDS[tile.kind].name}${disabled ? "，被上层遮挡" : ""}" ${disabled ? "disabled" : ""}>${art(tile.kind)}</button>`;
 }
 function renderBoard(entrance = false) {
+  const oldAvailable = new Set(
+    [...document.querySelectorAll<HTMLElement>(".board-tile.available")].map(
+      (node) => Number(node.dataset.id),
+    ),
+  );
+  const hadBoard = !!element("board").childElementCount;
   const available = new Set(availableTiles(game.state));
   element("board").innerHTML = game.state.board
     .map((id) => {
       const tile = game.state.tiles[id];
       const html = tileHTML(
         id,
-        `board-tile ${available.has(id) ? "available" : "covered"}`,
+        `board-tile ${available.has(id) ? "available" : "covered"}${!entrance && hadBoard && available.has(id) && !oldAvailable.has(id) ? " just-uncovered" : ""}`,
         !available.has(id),
       );
       return html.replace(
@@ -243,7 +249,7 @@ modal.addEventListener("click", (event) => {
   }
 });
 
-async function pick(id: number) {
+async function pick(id: number, keyboardInput = false) {
   if (busy || game.state.status !== "playing") return;
   const source = document.querySelector<HTMLElement>(
     `.board-tile[data-id="${id}"], .reserve-tile[data-id="${id}"]`,
@@ -353,17 +359,34 @@ async function pick(id: number) {
   busy = false;
   updateStats();
   const status = game.state.status as GameState["status"];
+  if (
+    keyboardInput &&
+    status === "playing" &&
+    document.activeElement === document.body
+  ) {
+    const distance = (node: HTMLElement) => {
+      const rect = node.getBoundingClientRect();
+      return (rect.x - sourceRect.x) ** 2 + (rect.y - sourceRect.y) ** 2;
+    };
+    [
+      ...document.querySelectorAll<HTMLElement>(
+        ".board-tile.available, .reserve-tile",
+      ),
+    ]
+      .sort((a, b) => distance(a) - distance(b))[0]
+      ?.focus({ preventScroll: true });
+  }
   if (status === "won") await onWin();
   else if (status === "lost") onLost();
 }
 
 element("board").addEventListener("click", (event) => {
   const tile = (event.target as Element).closest<HTMLElement>(".available");
-  if (tile) void pick(Number(tile.dataset.id));
+  if (tile) void pick(Number(tile.dataset.id), event.detail === 0);
 });
 element("reserve").addEventListener("click", (event) => {
   const tile = (event.target as Element).closest<HTMLElement>(".reserve-tile");
-  if (tile) void pick(Number(tile.dataset.id));
+  if (tile) void pick(Number(tile.dataset.id), event.detail === 0);
 });
 
 async function useTool(tool: "remove" | "undo" | "shuffle") {

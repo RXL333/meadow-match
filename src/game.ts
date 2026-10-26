@@ -1,3 +1,5 @@
+import { buildIrregularTiles } from "./layouts";
+
 export const TILE_SIZE = 54;
 export const BOARD_WIDTH = 420;
 export const BOARD_HEIGHT = 334;
@@ -131,93 +133,6 @@ function removalOrder(
   return result;
 }
 
-const SHAPES: number[][][] = [
-  [
-    [5, 4],
-    [4, 3],
-    [2, 2],
-  ],
-  [
-    [6, 4],
-    [4, 3],
-    [3, 2],
-  ],
-  [
-    [6, 5],
-    [4, 3],
-    [3, 2],
-  ],
-  [
-    [6, 5],
-    [5, 4],
-    [2, 2],
-  ],
-  [
-    [6, 5],
-    [5, 4],
-    [3, 2],
-    [2, 2],
-  ],
-  [
-    [6, 5],
-    [5, 4],
-    [4, 3],
-    [2, 2],
-  ],
-  [
-    [6, 5],
-    [5, 4],
-    [4, 3],
-    [3, 2],
-    [2, 2],
-  ],
-  [
-    [6, 5],
-    [5, 4],
-    [4, 3],
-    [3, 2],
-    [3, 2],
-    [2, 2],
-  ],
-  [
-    [6, 5],
-    [5, 4],
-    [4, 3],
-    [4, 3],
-    [3, 2],
-    [2, 2],
-  ],
-  [
-    [6, 5],
-    [5, 4],
-    [4, 3],
-    [4, 3],
-    [3, 2],
-    [3, 2],
-    [2, 2],
-  ],
-];
-
-function buildTiles(level: number): Tile[] {
-  const tiles: Tile[] = [];
-  SHAPES[level].forEach(([cols, rows], z) => {
-    for (let row = 0; row < rows; row++) {
-      for (let col = 0; col < cols; col++) {
-        tiles.push({
-          id: tiles.length,
-          kind: 0,
-          z,
-          x: (BOARD_WIDTH - cols * 58) / 2 + col * 58 + (z % 2 ? 9 : 0),
-          y: (BOARD_HEIGHT - rows * 58) / 2 + row * 58 + (z % 2 ? 7 : 0),
-        });
-      }
-    }
-  });
-  if (tiles.length % 3)
-    throw new Error("Tile count must be divisible by three");
-  return tiles;
-}
-
 function boundedSequence(
   groups: number,
   kindCount: number,
@@ -262,7 +177,7 @@ export function generateLevel(
 ): GameState {
   level = Math.max(0, Math.min(LEVELS.length - 1, Math.floor(level)));
   const random = randomGenerator(seed);
-  const tiles = buildTiles(level);
+  const tiles = buildIrregularTiles(level, random);
   const board = tiles.map((t) => t.id);
   const solution = removalOrder(tiles, board, random);
   const config = LEVELS[level];

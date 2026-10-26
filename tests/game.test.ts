@@ -6,9 +6,14 @@ import {
   generateLevel,
   dailySeed,
   shanghaiDate,
+  covers,
+  TILE_SIZE,
+  BOARD_WIDTH,
+  BOARD_HEIGHT,
   type GameState,
   type Tile,
 } from "../src/game";
+import { LEVEL_TILE_COUNTS } from "../src/layouts";
 
 function fixture(kinds: number[], tray: number[] = []): Game {
   const game = new Game(0);
@@ -103,6 +108,54 @@ describe("rules and transactions", () => {
 });
 
 describe("generation and certified reshuffle", () => {
+  test("irregular layouts fit the board without overlapping cards in the same layer", () => {
+    for (let level = 0; level < 10; level++) {
+      for (let seed = 1; seed <= 40; seed++) {
+        const { tiles } = generateLevel(level, seed);
+        expect(tiles).toHaveLength(LEVEL_TILE_COUNTS[level]);
+        for (const tile of tiles) {
+          expect(tile.x).toBeGreaterThanOrEqual(0);
+          expect(tile.y).toBeGreaterThanOrEqual(0);
+          expect(tile.x + TILE_SIZE).toBeLessThanOrEqual(BOARD_WIDTH);
+          expect(tile.y + TILE_SIZE).toBeLessThanOrEqual(BOARD_HEIGHT);
+          for (const other of tiles) {
+            if (tile.id >= other.id || tile.z !== other.z) continue;
+            expect(
+              Math.abs(tile.x - other.x) >= TILE_SIZE ||
+                Math.abs(tile.y - other.y) >= TILE_SIZE,
+              `level ${level + 1}, seed ${seed}: same-layer cards ${tile.id} and ${other.id}`,
+            ).toBe(true);
+          }
+        }
+      }
+    }
+  });
+  test("the opening board offers two separate layered edge stacks", () => {
+    const state = generateLevel(0);
+    const stacks = availableTiles(state).filter(
+      (id) =>
+        state.tiles.filter(
+          (tile) =>
+            covers(state.tiles[id], tile) &&
+            Math.abs(tile.x - state.tiles[id].x) <= 12 &&
+            Math.abs(tile.y - state.tiles[id].y) <= 20,
+        ).length >= 2,
+    );
+    expect(stacks.length).toBeGreaterThanOrEqual(2);
+  });
+  test("reshuffling preserves the irregular geometry as well as tile counts", () => {
+    const game = new Game(9);
+    const geometry = game.state.tiles.map(({ id, x, y, z }) => ({
+      id,
+      x,
+      y,
+      z,
+    }));
+    expect(game.shuffle()).toBe(true);
+    expect(
+      game.state.tiles.map(({ id, x, y, z }) => ({ id, x, y, z })),
+    ).toEqual(geometry);
+  });
   test("all 10 levels, across 40 seeds each, have a legal winning path", () => {
     for (let level = 0; level < 10; level++)
       for (let seed = 1; seed <= 40; seed++) {
