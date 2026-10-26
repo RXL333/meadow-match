@@ -1,0 +1,19 @@
+@font-face {
+  font-family: 'Noto Serif SC';
+  font-style: normal; font-display: swap;
+  font-weight: 600;
+  src: url(./meadow-serif-0.woff2) format('truetype');
+}
+@font-face {
+  font-family: 'Noto Serif SC';
+  font-style: normal; font-display: swap;
+  font-weight: 700;
+  src: url(./meadow-serif-1.woff2) format('truetype');
+}
+@font-face {
+  font-family: 'Noto Serif SC';
+  font-style: normal; font-display: swap;
+  font-weight: 800;
+  src: url(./meadow-serif-2.woff2) format('truetype');
+}
+
