@@ -447,8 +447,9 @@ h3 {
 .board {
   position: relative;
   width: 100%;
-  aspect-ratio: 420/334;
+  aspect-ratio: 420/262;
   isolation: isolate;
+  contain: layout style;
 }
 .tile {
   display: block;
@@ -476,16 +477,11 @@ h3 {
   background-repeat: no-repeat;
   pointer-events: none;
   transform: scale(0.87);
-  filter: drop-shadow(0 1px 1px #695f4212);
 }
 .board-tile {
   position: absolute;
   width: 12.857142857%;
   aspect-ratio: 1;
-  transition:
-    filter 0.24s,
-    box-shadow 0.24s,
-    background 0.24s;
 }
 .board-tile.available {
   cursor: pointer;
@@ -495,14 +491,12 @@ h3 {
 }
 @keyframes uncover {
   from {
-    filter: brightness(1.12);
-    box-shadow:
-      0 4px 0 #cec7a9,
-      0 0 0 3px #b5c58a66,
-      0 7px 12px #4d593122;
+    transform: translateY(-2px) scale(1.025);
+    opacity: 0.8;
   }
   to {
-    filter: brightness(1);
+    transform: translateY(0) scale(1);
+    opacity: 1;
   }
 }
 .board-tile.available:hover {
@@ -531,11 +525,9 @@ h3 {
   box-shadow:
     0 4px 0 #b9c0a7,
     0 5px 5px #4f5f3318;
-  filter: brightness(0.92);
 }
 .covered .tile-art {
   opacity: 0.52;
-  filter: saturate(0.62);
 }
 .dealing .board-tile {
   animation: deal 0.5s var(--ease) both;
@@ -1602,9 +1594,6 @@ h3 {
   .board-wrap {
     padding: 0;
   }
-  .board {
-    aspect-ratio: 420/344;
-  }
   .tray-heading {
     font-size: 9px;
     margin: 6px 0 9px;
@@ -1797,7 +1786,6 @@ h3 {
   .board {
     width: calc(100% + 64px);
     margin-left: -32px;
-    aspect-ratio: 420/334;
   }
   .doodle-a {
     left: -8px;

@@ -63,7 +63,7 @@ test("desktop loads the complete original visual without broken assets or browse
   await page
     .locator(".game-card")
     .screenshot({
-      path: "test-results/board-irregular.png",
+      path: "test-results/board-reference.png",
       animations: "disabled",
     });
   await page.screenshot({

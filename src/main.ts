@@ -3,11 +3,13 @@ import {
   Game,
   KINDS,
   LEVELS,
+  BOARD_WIDTH,
   availableTiles,
   dailySeed,
   shanghaiDate,
   type GameState,
 } from "./game";
+import { boardHeight } from "./layouts";
 import { icon, sheep } from "./icons";
 import { MeadowAudio } from "./audio";
 import { readProgress, saveProgress } from "./storage";
@@ -100,35 +102,86 @@ function tileHTML(id: number, className: string, disabled = false): string {
   const tile = game.state.tiles[id];
   return `<button type="button" class="tile ${className}" data-id="${id}" data-kind="${tile.kind}" aria-label="${KINDS[tile.kind].name}${disabled ? "，被上层遮挡" : ""}" ${disabled ? "disabled" : ""}>${art(tile.kind)}</button>`;
 }
+const boardNodes = new Map<number, HTMLButtonElement>();
+let renderedGame: Game | undefined;
 function renderBoard(entrance = false) {
-  const oldAvailable = new Set(
-    [...document.querySelectorAll<HTMLElement>(".board-tile.available")].map(
-      (node) => Number(node.dataset.id),
-    ),
-  );
-  const hadBoard = !!element("board").childElementCount;
+  const board = element("board");
+  if (renderedGame !== game) {
+    board.replaceChildren();
+    boardNodes.clear();
+    renderedGame = game;
+    board.style.aspectRatio = `${BOARD_WIDTH} / ${boardHeight(game.state.level)}`;
+  }
+  const present = new Set(game.state.board);
+  for (const [id, node] of boardNodes) {
+    if (!present.has(id)) {
+      node.remove();
+      boardNodes.delete(id);
+    }
+  }
   const available = new Set(availableTiles(game.state));
-  element("board").innerHTML = game.state.board
-    .map((id) => {
-      const tile = game.state.tiles[id];
-      const html = tileHTML(
-        id,
-        `board-tile ${available.has(id) ? "available" : "covered"}${!entrance && hadBoard && available.has(id) && !oldAvailable.has(id) ? " just-uncovered" : ""}`,
-        !available.has(id),
-      );
-      return html.replace(
-        "data-id=",
-        `style="left:${(tile.x / 420) * 100}%;top:${(tile.y / 334) * 100}%;z-index:${10 + tile.z * 3};--deal-delay:${Math.min(id * 10, 300)}ms" data-id=`,
-      );
-    })
-    .join("");
-  element("board").classList.toggle("dealing", entrance);
+  const additions = document.createDocumentFragment();
+  for (const id of game.state.board) {
+    const tile = game.state.tiles[id];
+    let node = boardNodes.get(id);
+    const existed = !!node;
+    if (!node) {
+      node = document.createElement("button");
+      node.type = "button";
+      node.className = "tile board-tile";
+      node.dataset.id = String(id);
+      node.style.cssText = `left:${(tile.x / BOARD_WIDTH) * 100}%;top:${(tile.y / boardHeight(game.state.level)) * 100}%;z-index:${10 + tile.z * 3};--deal-delay:${Math.min(id * 10, 300)}ms`;
+      boardNodes.set(id, node);
+      additions.append(node);
+    }
+    if (node.dataset.kind !== String(tile.kind)) {
+      node.dataset.kind = String(tile.kind);
+      node.innerHTML = art(tile.kind);
+    }
+    const enabled = available.has(id);
+    const uncovered = existed && node.disabled && enabled && !entrance;
+    node.disabled = !enabled;
+    node.classList.toggle("available", enabled);
+    node.classList.toggle("covered", !enabled);
+    if (!enabled) node.classList.remove("just-uncovered");
+    else if (uncovered) node.classList.add("just-uncovered");
+    node.setAttribute("aria-label", `${KINDS[tile.kind].name}${enabled ? "" : "，被上层遮挡"}`);
+  }
+  if (additions.childNodes.length) board.append(additions);
+  board.classList.toggle("dealing", entrance);
   element("board-empty").hidden = !!game.state.board.length;
 }
+element("board").addEventListener("animationend", (event) => {
+  if (event.animationName === "uncover")
+    (event.target as Element).classList.remove("just-uncovered");
+});
 function renderTray(ids = game.state.tray) {
-  element("tray").innerHTML = ids
-    .map((id) => tileHTML(id, "tray-tile", true))
-    .join("");
+  const tray = element("tray");
+  const nodes = new Map(
+    [...tray.querySelectorAll<HTMLButtonElement>(".tray-tile")].map((node) => [
+      Number(node.dataset.id), node,
+    ]),
+  );
+  for (const [id, node] of nodes) if (!ids.includes(id)) node.remove();
+  ids.forEach((id, index) => {
+    const tile = game.state.tiles[id];
+    let node = nodes.get(id);
+    if (!node) {
+      node = document.createElement("button");
+      node.type = "button";
+      node.className = "tile tray-tile";
+      node.dataset.id = String(id);
+      node.disabled = true;
+    }
+    if (node.dataset.kind !== String(tile.kind)) {
+      node.dataset.kind = String(tile.kind);
+      node.innerHTML = art(tile.kind);
+      node.setAttribute("aria-label", KINDS[tile.kind].name);
+    }
+    node.style.visibility = "";
+    if (tray.children[index] !== node)
+      tray.insertBefore(node, tray.children[index] ?? null);
+  });
 }
 function renderReserve() {
   const reserve = element("reserve");
@@ -251,7 +304,9 @@ async function pick(id: number, keyboardInput = false) {
   if (!source) return;
   const sourceRect = source.getBoundingClientRect();
   const sourceMarkup = source.innerHTML;
-  const before = rectangles(".tray-tile");
+  const before = reducedMotion
+    ? new Map<number, DOMRect>()
+    : rectangles(".tray-tile");
   const intermediate = [...game.state.tray];
   const kind = game.state.tiles[id].kind;
   const last = intermediate.findLastIndex(
@@ -261,97 +316,113 @@ async function pick(id: number, keyboardInput = false) {
   const result = game.pick(id);
   if (!result.accepted) return;
   busy = true;
-  renderBoard();
-  renderReserve();
-  renderTray(intermediate);
-  updateStats();
-  flip(before, ".tray-tile");
-  const target = document.querySelector<HTMLElement>(
-    `.tray-tile[data-id="${id}"]`,
-  )!;
-  const targetRect = target.getBoundingClientRect();
-  target.style.visibility = "hidden";
-  const flyer = document.createElement("div");
-  flyer.className = "tile flying-tile";
-  flyer.innerHTML = sourceMarkup;
-  flyer.style.cssText = `left:${sourceRect.left}px;top:${sourceRect.top}px;width:${sourceRect.width}px;height:${sourceRect.height}px;`;
-  element("effects").append(flyer);
-  const dx = targetRect.left - sourceRect.left;
-  const dy = targetRect.top - sourceRect.top;
-  audio.play("pick");
-  await animate(
-    flyer,
-    [
-      { transform: "translate(0,0) scale(1)", rotate: "0deg" },
-      {
-        transform: `translate(${dx * 0.35}px,${dy * 0.22 - 35}px) scale(1.12)`,
-        rotate: dx > 0 ? "7deg" : "-7deg",
-        offset: 0.32,
-      },
-      {
-        transform: `translate(${dx}px,${dy}px) scale(${targetRect.width / sourceRect.width})`,
-        rotate: "0deg",
-      },
-    ],
-    300,
-    "cubic-bezier(.25,.7,.3,1)",
-  );
-  flyer.remove();
-  target.style.visibility = "";
-  void animate(
-    target,
-    [
-      { transform: "scale(1.08,.94)" },
-      { transform: "scale(.97,1.04)" },
-      { transform: "scale(1)" },
-    ],
-    200,
-  );
-  if (result.matched.length) {
-    await pause(75);
-    const nodes = result.matched.map((tid) =>
-      document.querySelector<HTMLElement>(`.tray-tile[data-id="${tid}"]`)!,
-    );
-    const center = nodes[1].getBoundingClientRect();
-    audio.play("match");
-    particles(center.x + center.width / 2, center.y + center.height / 2);
-    await Promise.all(
-      nodes.map((node) => {
-        const rect = node.getBoundingClientRect();
-        return animate(
-          node,
-          [
-            { transform: "translateX(0) scale(1)", opacity: 1 },
-            {
-              transform: `translateX(${(center.x - rect.x) * 0.22}px) scale(1.12)`,
-              opacity: 1,
-              offset: 0.35,
-            },
-            {
-              transform: `translateX(${center.x - rect.x}px) scale(.1)`,
-              opacity: 0,
-            },
-          ],
-          280,
+  let flyer: HTMLElement | undefined;
+  try {
+    renderBoard();
+    renderReserve();
+    audio.play("pick");
+    if (!reducedMotion && !document.hidden) {
+      renderTray(intermediate);
+      updateStats();
+      flip(before, ".tray-tile");
+      const target = document.querySelector<HTMLElement>(
+        `.tray-tile[data-id="${id}"]`,
+      )!;
+      const targetRect = target.getBoundingClientRect();
+      target.style.visibility = "hidden";
+      flyer = document.createElement("div");
+      flyer.className = "tile flying-tile";
+      flyer.innerHTML = sourceMarkup;
+      flyer.style.cssText = `left:${sourceRect.left}px;top:${sourceRect.top}px;width:${sourceRect.width}px;height:${sourceRect.height}px;`;
+      element("effects").append(flyer);
+      const dx = targetRect.left - sourceRect.left;
+      const dy = targetRect.top - sourceRect.top;
+      await animate(
+        flyer,
+        [
+          { transform: "translate(0,0) scale(1)", rotate: "0deg" },
+          {
+            transform: `translate(${dx * 0.35}px,${dy * 0.22 - 35}px) scale(1.12)`,
+            rotate: dx > 0 ? "7deg" : "-7deg",
+            offset: 0.32,
+          },
+          {
+            transform: `translate(${dx}px,${dy}px) scale(${targetRect.width / sourceRect.width})`,
+            rotate: "0deg",
+          },
+        ],
+        300,
+        "cubic-bezier(.25,.7,.3,1)",
+      );
+      flyer.remove();
+      target.style.visibility = "";
+      void animate(
+        target,
+        [
+          { transform: "scale(1.08,.94)" },
+          { transform: "scale(.97,1.04)" },
+          { transform: "scale(1)" },
+        ],
+        200,
+      );
+      if (result.matched.length) {
+        await pause(75);
+        const nodes = result.matched.map((tid) =>
+          document.querySelector<HTMLElement>(`.tray-tile[data-id="${tid}"]`)!,
         );
-      }),
+        const center = nodes[1].getBoundingClientRect();
+        audio.play("match");
+        particles(center.x + center.width / 2, center.y + center.height / 2);
+        await Promise.all(
+          nodes.map((node) => {
+            const rect = node.getBoundingClientRect();
+            return animate(
+              node,
+              [
+                { transform: "translateX(0) scale(1)", opacity: 1 },
+                {
+                  transform: `translateX(${(center.x - rect.x) * 0.22}px) scale(1.12)`,
+                  opacity: 1,
+                  offset: 0.35,
+                },
+                {
+                  transform: `translateX(${center.x - rect.x}px) scale(.1)`,
+                  opacity: 0,
+                },
+              ],
+              280,
+            );
+          }),
+        );
+        const old = rectangles(".tray-tile");
+        renderTray();
+        flip(old, ".tray-tile");
+        void animate(
+          element("rack"),
+          [
+            { transform: "scale(1)" },
+            { transform: "scale(1.012)", offset: 0.4 },
+            { transform: "scale(1)" },
+          ],
+          260,
+        );
+      }
+    } else if (result.matched.length) {
+      audio.play("match");
+    }
+  } catch (error) {
+    console.warn(
+      "Card presentation interrupted; restoring the committed move.",
+      error,
     );
-    const old = rectangles(".tray-tile");
+  } finally {
+    flyer?.remove();
+    busy = false;
+    // The engine commits first. Always reconcile the visible tray and release
+    // input, including after a hidden tab, animation error or canceled timeline.
     renderTray();
-    flip(old, ".tray-tile");
-    const card = document.querySelector(".game-card")!;
-    void animate(
-      card,
-      [
-        { boxShadow: "0 16px 60px #3c563012" },
-        { boxShadow: "0 16px 65px #c8d99870", offset: 0.4 },
-        { boxShadow: "0 16px 60px #3c563012" },
-      ],
-      500,
-    );
+    updateStats();
   }
-  busy = false;
-  updateStats();
   const status = game.state.status as GameState["status"];
   if (
     keyboardInput &&
@@ -391,38 +462,47 @@ async function useTool(tool: "remove" | "undo" | "shuffle") {
       return;
     }
     busy = true;
-    updateStats();
-    audio.play("tool");
-    await Promise.all(
-      [...document.querySelectorAll(".board-tile")].map((node, i) =>
-        animate(
-          node,
-          [
-            { transform: "translate(0,0) rotateY(0deg)", opacity: 1 },
-            {
-              transform: `translate(${i % 2 ? 8 : -8}px,-12px) rotateY(90deg)`,
-              opacity: 0.3,
-            },
-          ],
-          170,
+    try {
+      updateStats();
+      audio.play("tool");
+      await Promise.all(
+        [...document.querySelectorAll(".board-tile")].map((node, i) =>
+          animate(
+            node,
+            [
+              { transform: "translate(0,0) rotateY(0deg)", opacity: 1 },
+              {
+                transform: `translate(${i % 2 ? 8 : -8}px,-12px) rotateY(90deg)`,
+                opacity: 0.3,
+              },
+            ],
+            170,
+          ),
         ),
-      ),
-    );
-    renderBoard();
-    await Promise.all(
-      [...document.querySelectorAll(".board-tile")].map((node) =>
-        animate(
-          node,
-          [
-            { transform: "rotateY(-90deg)", opacity: 0.3 },
-            { transform: "rotateY(0deg)", opacity: 1 },
-          ],
-          250,
+      );
+      renderBoard();
+      await Promise.all(
+        [...document.querySelectorAll(".board-tile")].map((node) =>
+          animate(
+            node,
+            [
+              { transform: "rotateY(-90deg)", opacity: 0.3 },
+              { transform: "rotateY(0deg)", opacity: 1 },
+            ],
+            250,
+          ),
         ),
-      ),
-    );
-    busy = false;
-    updateStats();
+      );
+    } catch (error) {
+      console.warn(
+        "Shuffle presentation interrupted; restoring the committed board.",
+        error,
+      );
+    } finally {
+      busy = false;
+      renderBoard();
+      updateStats();
+    }
     toast("新牌面已准备好，继续寻找小美好");
   } else {
     const before = rectangles(".tray-tile");

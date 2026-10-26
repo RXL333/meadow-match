@@ -1,8 +1,8 @@
-import { buildIrregularTiles } from "./layouts";
+import { boardHeight, buildIrregularTiles } from "./layouts";
 
 export const TILE_SIZE = 54;
 export const BOARD_WIDTH = 420;
-export const BOARD_HEIGHT = 334;
+export const BOARD_HEIGHT = boardHeight(9);
 export const CAPACITY = 7;
 
 export const KINDS = [

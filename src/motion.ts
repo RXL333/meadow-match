@@ -1,7 +1,19 @@
 export let reducedMotion = false;
+const activeAnimations = new Set<() => void>();
+
+function finishAnimations() {
+  [...activeAnimations].forEach((finish) => finish());
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) finishAnimations();
+});
+window.addEventListener("pagehide", finishAnimations);
+
 export function setReducedMotion(value: boolean) {
   reducedMotion = value;
   document.documentElement.classList.toggle("reduced-motion", value);
+  if (value) finishAnimations();
 }
 export async function animate(
   element: Element,
@@ -9,17 +21,38 @@ export async function animate(
   duration = 300,
   easing = "cubic-bezier(.16,1,.3,1)",
 ) {
-  if (reducedMotion || !element.animate) return;
-  const animation = element.animate(frames, { duration, easing, fill: "none" });
-  try {
-    await animation.finished;
-  } catch {
-    /* Cancellation during navigation is expected. */
-  }
+  if (reducedMotion || document.hidden || !element.animate) return;
+  // A suspended timeline or an unavailable animation backend must never hold
+  // the gameplay lock. Release every animation on finish, cancellation or deadline.
+  await new Promise<void>((resolve) => {
+    let animation: Animation | undefined;
+    let deadline: ReturnType<typeof setTimeout> | undefined;
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(deadline);
+      activeAnimations.delete(finish);
+      try {
+        animation?.cancel();
+      } catch {
+        // Some browser backends also reject cancellation after a context loss.
+      }
+      resolve();
+    };
+    try {
+      animation = element.animate(frames, { duration, easing, fill: "none" });
+      activeAnimations.add(finish);
+      deadline = setTimeout(finish, duration + 150);
+      void animation.finished.then(finish, finish);
+    } catch {
+      finish();
+    }
+  });
 }
 export function pause(ms: number) {
   return new Promise<void>((resolve) =>
-    setTimeout(resolve, reducedMotion ? 0 : ms),
+    setTimeout(resolve, reducedMotion || document.hidden ? 0 : ms),
   );
 }
 export function flip(elements: Map<number, DOMRect>, selector: string) {
@@ -48,9 +81,10 @@ export function rectangles(selector: string): Map<number, DOMRect> {
   );
 }
 export function particles(x: number, y: number, celebration = false) {
-  if (reducedMotion) return;
+  if (reducedMotion || document.hidden) return;
   const layer = document.querySelector("#effects")!;
-  const count = celebration ? 65 : 14;
+  // Keep the effects layer bounded, including under rapid or interrupted play.
+  const count = Math.min(celebration ? 48 : 12, 64 - layer.childElementCount);
   for (let i = 0; i < count; i++) {
     const particle = document.createElement("i");
     particle.className = `particle ${celebration ? "confetti" : ""}`;
@@ -65,7 +99,8 @@ export function particles(x: number, y: number, celebration = false) {
     const dy = celebration
       ? -90 - Math.random() * 190
       : Math.sin(angle) * distance;
-    const animation = particle.animate(
+    void animate(
+      particle,
       [
         { transform: "translate(0,0) scale(.2)", opacity: 1 },
         {
@@ -78,11 +113,8 @@ export function particles(x: number, y: number, celebration = false) {
           opacity: 0,
         },
       ],
-      {
-        duration: celebration ? 1400 + Math.random() * 800 : 650,
-        easing: "cubic-bezier(.2,.65,.4,1)",
-      },
-    );
-    animation.finished.catch(() => {}).finally(() => particle.remove());
+      celebration ? 1400 + Math.random() * 800 : 650,
+      "cubic-bezier(.2,.65,.4,1)",
+    ).finally(() => particle.remove());
   }
 }

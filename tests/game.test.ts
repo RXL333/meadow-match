@@ -13,7 +13,7 @@ import {
   type GameState,
   type Tile,
 } from "../src/game";
-import { LEVEL_TILE_COUNTS } from "../src/layouts";
+import { boardHeight, LEVEL_TILE_COUNTS } from "../src/layouts";
 
 function fixture(kinds: number[], tray: number[] = []): Game {
   const game = new Game(0);
@@ -117,7 +117,8 @@ describe("generation and certified reshuffle", () => {
           expect(tile.x).toBeGreaterThanOrEqual(0);
           expect(tile.y).toBeGreaterThanOrEqual(0);
           expect(tile.x + TILE_SIZE).toBeLessThanOrEqual(BOARD_WIDTH);
-          expect(tile.y + TILE_SIZE).toBeLessThanOrEqual(BOARD_HEIGHT);
+          expect(tile.y + TILE_SIZE).toBeLessThanOrEqual(boardHeight(level));
+          expect(boardHeight(level)).toBeLessThanOrEqual(BOARD_HEIGHT);
           for (const other of tiles) {
             if (tile.id >= other.id || tile.z !== other.z) continue;
             expect(
@@ -128,6 +129,34 @@ describe("generation and certified reshuffle", () => {
           }
         }
       }
+    }
+  });
+  test("reference layouts have a connected close-packed base and local caps across tile seams", () => {
+    for (let level = 0; level < 10; level++) {
+      const { tiles } = generateLevel(level);
+      const base = tiles.filter((tile) => tile.z === 0);
+      const visited = new Set([base[0].id]);
+      const pending = [base[0]];
+      while (pending.length) {
+        const current = pending.pop()!;
+        for (const tile of base) {
+          const dx = Math.abs(tile.x - current.x);
+          const dy = Math.abs(tile.y - current.y);
+          if (!visited.has(tile.id) && ((dx === 55 && dy === 0) || (dy === 55 && dx === 0))) {
+            visited.add(tile.id);
+            pending.push(tile);
+          }
+        }
+      }
+      expect(visited.size).toBe(base.length);
+      const cols = new Set(base.map((tile) => tile.x)).size;
+      const rows = new Set(base.map((tile) => tile.y)).size;
+      expect(cols).toBe(7);
+      expect(base.length / (cols * rows)).toBeGreaterThan(0.85);
+      const caps = tiles.filter((tile) => tile.z > 0 && tile.z < 8);
+      expect(caps.length).toBeGreaterThanOrEqual(6);
+      for (const cap of caps)
+        expect(base.filter((tile) => covers(cap, tile)).length).toBeGreaterThanOrEqual(2);
     }
   });
   test("the opening board offers two separate layered edge stacks", () => {
