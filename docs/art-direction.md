@@ -10,8 +10,10 @@
 
 - `art-source/meadow.png`：原始背景。
 - `art-source/farm-icons.png`：原始4列3行透明牌面图集。
-- `public/assets/meadow.webp`：网页背景，251330字节。
-- `public/assets/farm-icons.webp`：网页图集，310440字节。
+- `public/assets/meadow.webp`：网页背景，136572字节。
+- `public/assets/farm-icons.webp`：网页图集，260466字节。
+- `art-source/meadow-serif-subset.ttf`：370字符的Noto Serif SC授权子集源字体。
+- `public/fonts/meadow-serif.woff2`：共享字重的本地WOFF2字体，67488字节。
 - `src/icons.ts`：原创SVG角色与线性辅助图标。
 
 ## 背景生成提示词
