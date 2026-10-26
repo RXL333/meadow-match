@@ -55,16 +55,109 @@ export function pause(ms: number) {
     setTimeout(resolve, reducedMotion || document.hidden ? 0 : ms),
   );
 }
+
+export interface CardFlight {
+  finished: Promise<void>;
+  retarget(target: DOMRect): void;
+  finish(): void;
+}
+
+// Each card owns its flight. Reordering the basket redirects it from its
+// current visual position without restarting another card or blocking input.
+export function flyTo(
+  element: HTMLElement,
+  from: DOMRect,
+  initialTarget: DOMRect,
+): CardFlight {
+  let destination = initialTarget;
+  let animation: Animation | undefined;
+  let deadline: ReturnType<typeof setTimeout> | undefined;
+  let revision = 0;
+  let settled = false;
+  let resolveFinished!: () => void;
+  const expiresAt = performance.now() + 800;
+  const finished = new Promise<void>((resolve) => { resolveFinished = resolve; });
+  const place = (rect: DOMRect) => {
+    Object.assign(element.style, {
+      left: `${rect.left}px`, top: `${rect.top}px`,
+      width: `${rect.width}px`, height: `${rect.height}px`,
+    });
+  };
+  const finish = () => {
+    if (settled) return;
+    settled = true;
+    revision++;
+    clearTimeout(deadline);
+    activeAnimations.delete(finish);
+    try { animation?.cancel(); } catch { /* Backend may have been discarded. */ }
+    place(destination);
+    resolveFinished();
+  };
+  const move = (origin: DOMRect, duration: number) => {
+    const version = ++revision;
+    clearTimeout(deadline);
+    try {
+      animation?.cancel();
+      place(origin);
+      if (reducedMotion || document.hidden || !element.animate) {
+        finish();
+        return;
+      }
+      const dx = destination.left - origin.left;
+      const dy = destination.top - origin.top;
+      if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5 &&
+          Math.abs(destination.width - origin.width) < 0.5) {
+        finish();
+        return;
+      }
+      const lift = Math.min(32, Math.abs(dy) * 0.15 + Math.abs(dx) * 0.08);
+      animation = element.animate([
+        { transform: "translate(0,0) scale(1)", rotate: "0deg" },
+        { transform: `translate(${dx * 0.4}px,${dy * 0.3 - lift}px) scale(1.04)`, rotate: dx > 0 ? "4deg" : "-4deg", offset: 0.35 },
+        { transform: `translate(${dx}px,${dy}px) scale(${destination.width / origin.width})`, rotate: "0deg" },
+      ], { duration, easing: "cubic-bezier(.2,.65,.3,1)", fill: "forwards" });
+      const complete = () => { if (version === revision) finish(); };
+      deadline = setTimeout(complete, Math.min(duration + 150, Math.max(0, expiresAt - performance.now())));
+      void animation.finished.then(complete, complete);
+    } catch {
+      finish();
+    }
+  };
+  activeAnimations.add(finish);
+  move(from, 230);
+  return {
+    finished,
+    finish,
+    retarget(target) {
+      if (Math.abs(target.x - destination.x) < 0.5 &&
+          Math.abs(target.y - destination.y) < 0.5 &&
+          Math.abs(target.width - destination.width) < 0.5) return;
+      if (settled) {
+        destination = target;
+        place(target);
+        return;
+      }
+      const current = element.getBoundingClientRect();
+      destination = target;
+      move(current, 140);
+    },
+  };
+}
+
 export function flip(elements: Map<number, DOMRect>, selector: string) {
   document.querySelectorAll<HTMLElement>(selector).forEach((element) => {
+    if (element.style.visibility === "hidden") return;
     const before = elements.get(Number(element.dataset.id));
     if (!before) return;
     const after = element.getBoundingClientRect();
+    if (Math.abs(before.x - after.x) < 0.5 && Math.abs(before.y - after.y) < 0.5) return;
+    element.getAnimations().forEach((animation) => animation.cancel());
+    const target = element.getBoundingClientRect();
     void animate(
       element,
       [
         {
-          transform: `translate(${before.x - after.x}px,${before.y - after.y}px)`,
+          transform: `translate(${before.x - target.x}px,${before.y - target.y}px)`,
         },
         { transform: "translate(0,0)" },
       ],

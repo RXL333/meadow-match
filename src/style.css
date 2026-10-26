@@ -1048,6 +1048,7 @@ h3 {
   position: fixed;
   z-index: 100;
   will-change: transform;
+  transform-origin: top left;
   pointer-events: none;
 }
 .particle {

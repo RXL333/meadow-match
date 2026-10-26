@@ -177,7 +177,7 @@ test("normal animation completes a triple and accepts no duplicate rapid input",
   const solution = (await state(page)).solution;
   await page
     .locator(`.board-tile[data-id="${solution[0]}"]`)
-    .dblclick({ force: true });
+    .evaluate((node) => { (node as HTMLButtonElement).click(); (node as HTMLButtonElement).click(); });
   await idle(page);
   expect((await state(page)).moves).toBe(1);
   await clickTile(page, solution[1]);

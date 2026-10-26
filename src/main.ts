@@ -12,6 +12,7 @@ import {
 import { boardHeight } from "./layouts";
 import { icon, sheep } from "./icons";
 import { MeadowAudio } from "./audio";
+import { BasketMotion } from "./basket";
 import { readProgress, saveProgress } from "./storage";
 import {
   animate,
@@ -42,7 +43,8 @@ let currentLevel = Math.min(
   ) ?? 9,
 );
 let game = new Game(currentLevel);
-let busy = false;
+let toolBusy = false;
+let notifiedMove = -1;
 let toastTimeout: ReturnType<typeof setTimeout>;
 
 app.innerHTML = `
@@ -94,6 +96,19 @@ app.innerHTML = `
 const element = <T extends HTMLElement = HTMLElement>(id: string) =>
   document.getElementById(id) as T;
 const modal = element<HTMLDialogElement>("modal");
+const basket = new BasketMotion(element("effects"), () => {
+  renderTray();
+  updateStats();
+  checkOutcome();
+}, () => audio.play("match"));
+
+function isBusy() { return toolBusy || basket.busy; }
+function checkOutcome() {
+  if (isBusy() || game.state.status === "playing" || notifiedMove === game.state.moves) return;
+  notifiedMove = game.state.moves;
+  if (game.state.status === "won") void onWin();
+  else onLost();
+}
 
 function art(kind: number): string {
   return `<i class="tile-art" style="--col:${kind % 4};--row:${Math.floor(kind / 4)}" aria-hidden="true"></i>`;
@@ -178,7 +193,7 @@ function renderTray(ids = game.state.tray) {
       node.innerHTML = art(tile.kind);
       node.setAttribute("aria-label", KINDS[tile.kind].name);
     }
-    node.style.visibility = "";
+    node.style.visibility = basket.has(id) ? "hidden" : "";
     if (tray.children[index] !== node)
       tray.insertBefore(node, tray.children[index] ?? null);
   });
@@ -236,7 +251,7 @@ function updateStats() {
   };
   (["remove", "undo", "shuffle"] as const).forEach((tool) => {
     const button = element<HTMLButtonElement>(`tool-${tool}`);
-    button.disabled = busy || disabled[tool];
+    button.disabled = isBusy() || disabled[tool];
     button.querySelector(".tool-count")!.textContent = String(
       state.tools[tool],
     );
@@ -252,7 +267,7 @@ function updateStats() {
   element("daily-invite-copy").textContent = progress.daily[shanghaiDate()]
     ? "今日已收集，明天再来看看"
     : "每天一份专属小挑战";
-  element("board").setAttribute("aria-busy", String(busy));
+  element("board").setAttribute("aria-busy", String(isBusy()));
 }
 
 function render(entrance = false) {
@@ -296,154 +311,60 @@ modal.addEventListener("click", (event) => {
   }
 });
 
-async function pick(id: number, keyboardInput = false) {
-  if (busy || game.state.status !== "playing") return;
+function pick(id: number, keyboardInput = false) {
+  // Only exclusive tools block input. Other cards may still be in flight.
+  if (toolBusy || game.state.status !== "playing") return;
   const source = document.querySelector<HTMLElement>(
     `.board-tile[data-id="${id}"], .reserve-tile[data-id="${id}"]`,
   );
   if (!source) return;
   const sourceRect = source.getBoundingClientRect();
   const sourceMarkup = source.innerHTML;
-  const before = reducedMotion
-    ? new Map<number, DOMRect>()
-    : rectangles(".tray-tile");
+  const moving = !reducedMotion && !document.hidden;
+  const before = moving ? rectangles(".tray-tile") : new Map<number, DOMRect>();
   const intermediate = [...game.state.tray];
   const kind = game.state.tiles[id].kind;
-  const last = intermediate.findLastIndex(
-    (tid) => game.state.tiles[tid].kind === kind,
-  );
+  const last = intermediate.findLastIndex((tid) => game.state.tiles[tid].kind === kind);
   intermediate.splice(last < 0 ? intermediate.length : last + 1, 0, id);
   const result = game.pick(id);
   if (!result.accepted) return;
-  busy = true;
-  let flyer: HTMLElement | undefined;
+  audio.play("pick");
   try {
+    if (moving) basket.accept(id, sourceMarkup, sourceRect, intermediate, result.matched);
+    else if (result.matched.length) audio.play("match");
     renderBoard();
     renderReserve();
-    audio.play("pick");
-    if (!reducedMotion && !document.hidden) {
-      renderTray(intermediate);
-      updateStats();
-      flip(before, ".tray-tile");
-      const target = document.querySelector<HTMLElement>(
-        `.tray-tile[data-id="${id}"]`,
-      )!;
-      const targetRect = target.getBoundingClientRect();
-      target.style.visibility = "hidden";
-      flyer = document.createElement("div");
-      flyer.className = "tile flying-tile";
-      flyer.innerHTML = sourceMarkup;
-      flyer.style.cssText = `left:${sourceRect.left}px;top:${sourceRect.top}px;width:${sourceRect.width}px;height:${sourceRect.height}px;`;
-      element("effects").append(flyer);
-      const dx = targetRect.left - sourceRect.left;
-      const dy = targetRect.top - sourceRect.top;
-      await animate(
-        flyer,
-        [
-          { transform: "translate(0,0) scale(1)", rotate: "0deg" },
-          {
-            transform: `translate(${dx * 0.35}px,${dy * 0.22 - 35}px) scale(1.12)`,
-            rotate: dx > 0 ? "7deg" : "-7deg",
-            offset: 0.32,
-          },
-          {
-            transform: `translate(${dx}px,${dy}px) scale(${targetRect.width / sourceRect.width})`,
-            rotate: "0deg",
-          },
-        ],
-        300,
-        "cubic-bezier(.25,.7,.3,1)",
-      );
-      flyer.remove();
-      target.style.visibility = "";
-      void animate(
-        target,
-        [
-          { transform: "scale(1.08,.94)" },
-          { transform: "scale(.97,1.04)" },
-          { transform: "scale(1)" },
-        ],
-        200,
-      );
-      if (result.matched.length) {
-        await pause(75);
-        const nodes = result.matched.map((tid) =>
-          document.querySelector<HTMLElement>(`.tray-tile[data-id="${tid}"]`)!,
-        );
-        const center = nodes[1].getBoundingClientRect();
-        audio.play("match");
-        particles(center.x + center.width / 2, center.y + center.height / 2);
-        await Promise.all(
-          nodes.map((node) => {
-            const rect = node.getBoundingClientRect();
-            return animate(
-              node,
-              [
-                { transform: "translateX(0) scale(1)", opacity: 1 },
-                {
-                  transform: `translateX(${(center.x - rect.x) * 0.22}px) scale(1.12)`,
-                  opacity: 1,
-                  offset: 0.35,
-                },
-                {
-                  transform: `translateX(${center.x - rect.x}px) scale(.1)`,
-                  opacity: 0,
-                },
-              ],
-              280,
-            );
-          }),
-        );
-        const old = rectangles(".tray-tile");
-        renderTray();
-        flip(old, ".tray-tile");
-        void animate(
-          element("rack"),
-          [
-            { transform: "scale(1)" },
-            { transform: "scale(1.012)", offset: 0.4 },
-            { transform: "scale(1)" },
-          ],
-          260,
-        );
-      }
-    } else if (result.matched.length) {
-      audio.play("match");
-    }
-  } catch (error) {
-    console.warn(
-      "Card presentation interrupted; restoring the committed move.",
-      error,
-    );
-  } finally {
-    flyer?.remove();
-    busy = false;
-    // The engine commits first. Always reconcile the visible tray and release
-    // input, including after a hidden tab, animation error or canceled timeline.
     renderTray();
+    if (moving) flip(before, ".tray-tile");
+    basket.retarget(game.state.tray);
     updateStats();
+  } catch (error) {
+    console.warn("Card presentation interrupted; restoring the committed move.", error);
+    basket.clear();
+    render();
   }
-  const status = game.state.status as GameState["status"];
-  if (
-    keyboardInput &&
-    status === "playing" &&
-    document.activeElement === document.body
-  ) {
+  if (keyboardInput && game.state.status === "playing" && document.activeElement === document.body) {
     const distance = (node: HTMLElement) => {
       const rect = node.getBoundingClientRect();
       return (rect.x - sourceRect.x) ** 2 + (rect.y - sourceRect.y) ** 2;
     };
-    [
-      ...document.querySelectorAll<HTMLElement>(
-        ".board-tile.available, .reserve-tile",
-      ),
-    ]
-      .sort((a, b) => distance(a) - distance(b))[0]
-      ?.focus({ preventScroll: true });
+    [...document.querySelectorAll<HTMLElement>(".board-tile.available, .reserve-tile")]
+      .sort((a, b) => distance(a) - distance(b))[0]?.focus({ preventScroll: true });
   }
-  if (status === "won") await onWin();
-  else if (status === "lost") onLost();
+  checkOutcome();
 }
+
+// Mobile viewport changes and scrolling must not leave a flight aimed at an old slot.
+let retargetFrame = 0;
+function followBasket() {
+  if (!basket.busy || retargetFrame) return;
+  retargetFrame = requestAnimationFrame(() => {
+    retargetFrame = 0;
+    basket.retarget(game.state.tray);
+  });
+}
+window.addEventListener("resize", followBasket);
+window.addEventListener("scroll", followBasket, { passive: true });
 
 element("board").addEventListener("click", (event) => {
   const tile = (event.target as Element).closest<HTMLElement>(".available");
@@ -455,13 +376,13 @@ element("reserve").addEventListener("click", (event) => {
 });
 
 async function useTool(tool: "remove" | "undo" | "shuffle") {
-  if (busy) return;
+  if (isBusy()) return;
   if (tool === "shuffle") {
     if (!game.shuffle()) {
       toast("先用「挪一挪」或「想一想」腾出空间，再洗牌吧");
       return;
     }
-    busy = true;
+    toolBusy = true;
     try {
       updateStats();
       audio.play("tool");
@@ -499,7 +420,7 @@ async function useTool(tool: "remove" | "undo" | "shuffle") {
         error,
       );
     } finally {
-      busy = false;
+      toolBusy = false;
       renderBoard();
       updateStats();
     }
@@ -507,6 +428,7 @@ async function useTool(tool: "remove" | "undo" | "shuffle") {
   } else {
     const before = rectangles(".tray-tile");
     if (!(tool === "undo" ? game.undo() : game.remove())) return;
+    notifiedMove = -1;
     audio.play("tool");
     render();
     flip(before, ".tray-tile");
@@ -519,8 +441,9 @@ async function useTool(tool: "remove" | "undo" | "shuffle") {
 );
 
 function startLevel(level: number, nextMode: "journey" | "daily" = "journey") {
-  if (busy) return;
+  if (isBusy()) return;
   closeDialog();
+  notifiedMove = -1;
   mode = nextMode;
   currentDay = shanghaiDate();
   currentLevel = level;
@@ -597,7 +520,7 @@ function showHelp() {
 }
 
 function confirmRestart() {
-  if (busy) return;
+  if (isBusy()) return;
   if (!game.state.moves) {
     startLevel(currentLevel, mode);
     toast("新的一局准备好啦");
@@ -696,10 +619,10 @@ element("restart-button").addEventListener("click", confirmRestart);
 element("journey-nav").addEventListener("click", showLevels);
 element("levels-button").addEventListener("click", showLevels);
 element("daily-nav").addEventListener("click", () => {
-  if (!busy) startLevel(7, "daily");
+  if (!isBusy()) startLevel(7, "daily");
 });
 element("daily-invite").addEventListener("click", () => {
-  if (!busy) startLevel(7, "daily");
+  if (!isBusy()) startLevel(7, "daily");
 });
 element("collection-nav").addEventListener("click", showCollection);
 document.querySelector(".brand")!.addEventListener("click", (event) => {
@@ -719,7 +642,7 @@ updateSoundButton();
 Object.defineProperty(window, "__MEADOW__", {
   value: {
     getState: (): GameState => structuredClone(game.state),
-    isBusy: () => busy,
+    isBusy,
     getMode: () => mode,
   },
   writable: false,
