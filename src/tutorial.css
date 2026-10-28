@@ -1,0 +1,277 @@
+.tutorial-dialog {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  color: var(--forest);
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: none;
+}
+.tutorial-dialog::backdrop {
+  background: transparent;
+}
+.tutorial-scroll-space {
+  height: 100dvh;
+  pointer-events: none;
+}
+@media (min-width: 900px) {
+  .tutorial-scroll-space { display: none; }
+}
+.tutorial-shade {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.tutorial-dialog[data-step="welcome"] .tutorial-shade {
+  background: #243a2bb3;
+}
+.tutorial-spotlight {
+  position: fixed;
+  border: 2px solid #f9ffdb;
+  border-radius: 19px;
+  box-shadow: 0 0 0 150vmax #243a2ba6, 0 0 0 5px #edffbd40;
+  pointer-events: none;
+}
+.tutorial-panel {
+  position: fixed;
+  width: min(390px, calc(100% - 28px));
+  max-height: calc(100dvh - 40px);
+  padding: 22px 24px 20px;
+  border: 1px solid #fffff9;
+  border-radius: 25px;
+  background: linear-gradient(145deg, #fffef8, #f4f5e7);
+  box-shadow: 0 18px 64px #172d2440, 0 3px 10px #172d2412;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+}
+.tutorial-dialog[open] .tutorial-panel {
+  animation: tutorial-arrive 220ms var(--ease) both;
+}
+.tutorial-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 21px;
+}
+.tutorial-eyebrow {
+  font-size: 8px;
+  letter-spacing: 1.1px;
+  color: #798a64;
+}
+.tutorial-skip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 32px;
+  padding: 5px 0 5px 6px;
+  color: #6c7c5b;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.tutorial-skip .icon {
+  width: 14px;
+  height: 14px;
+}
+.tutorial-step-label {
+  color: #71834e;
+  font-size: 10px;
+  letter-spacing: 1.2px;
+  margin-bottom: 10px;
+}
+.tutorial-content h2 {
+  font-family: "Noto Serif SC", "Songti SC", "SimSun", serif;
+  font-weight: 600;
+  font-size: 25px;
+  line-height: 1.4;
+  letter-spacing: -.6px;
+  margin-bottom: 13px;
+}
+#tutorial-copy,
+.tutorial-tip {
+  color: #657458;
+  font-size: 13px;
+  line-height: 1.85;
+}
+.tutorial-tip {
+  padding: 12px 14px;
+  margin-top: 15px;
+  border-radius: 13px;
+  background: #e7edd98c;
+  font-size: 12px;
+}
+.tutorial-tip .icon {
+  width: 15px;
+  height: 15px;
+  vertical-align: -3px;
+}
+.tutorial-welcome-sheep {
+  width: 110px;
+  height: 106px;
+  margin: -5px auto 15px;
+}
+.tutorial-welcome-sheep svg {
+  width: 100%;
+  height: 100%;
+}
+.tutorial-dialog[data-step="welcome"] .tutorial-content {
+  text-align: center;
+}
+.tutorial-signoff {
+  color: #7a8a61;
+  font-size: 11px;
+  line-height: 1.8;
+  margin-top: 15px;
+}
+.tutorial-match {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  margin: 16px 0 4px;
+}
+.tutorial-match > span {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  background: #fffef6;
+  box-shadow: 0 3px 0 #cbd0b0, 0 5px 8px #52713b0d;
+}
+.tutorial-match .tile-art {
+  --col: 0;
+  --row: 0;
+}
+.tutorial-match b {
+  margin-left: 7px;
+  font-size: 26px;
+  color: #bba15c;
+  font-weight: 400;
+}
+.tutorial-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 17px;
+}
+.tutorial-list > p {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  color: #6b7a5d;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.tutorial-list .icon {
+  width: 27px;
+  height: 27px;
+  padding: 5px;
+  border-radius: 9px;
+  background: #e8edd9;
+  color: #738651;
+  margin-top: 2px;
+}
+.tutorial-list strong {
+  display: block;
+  color: #3d583d;
+  font-size: 13px;
+  margin-bottom: 2px;
+}
+.tutorial-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 20px;
+  margin-top: 20px;
+  border-top: 1px solid #d4ddc380;
+}
+.tutorial-next {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-height: 44px;
+  padding: 10px 16px;
+  border-radius: 13px;
+  background: #4f7047;
+  color: #fffdf0;
+  font-size: 12px;
+  white-space: nowrap;
+  box-shadow: 0 3px 0 #365536;
+}
+.tutorial-next .icon {
+  width: 15px;
+  height: 15px;
+}
+.tutorial-next:hover {
+  background: #44673d;
+}
+.tutorial-previous {
+  min-height: 44px;
+  padding: 9px 0;
+  font-size: 12px;
+  color: #657952;
+  white-space: nowrap;
+}
+.tutorial-dots {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+  justify-content: center;
+}
+.tutorial-dots i {
+  height: 4px;
+  width: 4px;
+  border-radius: 3px;
+  background: #dbe2cd;
+}
+.tutorial-dots i.current {
+  width: 13px;
+  background: #6f8a4d;
+}
+.tutorial-dots i.done {
+  background: #a7b98c;
+}
+.tutorial-replay {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 44px;
+  margin: 19px 0;
+  padding: 10px 12px;
+  border: 1px solid #cdd9b8;
+  border-radius: 13px;
+  background: #ebf0df;
+  font-size: 12px;
+}
+.tutorial-replay .icon {
+  width: 17px;
+  height: 17px;
+}
+@keyframes tutorial-arrive {
+  from { opacity: 0; transform: translateY(7px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (max-width: 370px), (max-height: 680px) {
+  .tutorial-panel { padding: 16px 18px; border-radius: 21px; }
+  .tutorial-topline { margin-bottom: 13px; }
+  .tutorial-content h2 { font-size: 22px; margin-bottom: 10px; }
+  #tutorial-copy { font-size: 12px; line-height: 1.75; }
+  .tutorial-eyebrow { font-size: 7px; letter-spacing: .5px; }
+  .tutorial-list { gap: 9px; margin-top: 12px; }
+  .tutorial-list > p { font-size: 11px; }
+  .tutorial-list strong { font-size: 12px; display: inline; margin-right: 7px; }
+  .tutorial-footer { gap: 8px; margin-top: 16px; padding-top: 16px; }
+  .tutorial-next { padding-left: 12px; padding-right: 12px; }
+  .tutorial-tip { font-size: 11px; margin-top: 12px; padding: 10px 12px; }
+}

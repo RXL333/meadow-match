@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page } from "./fixtures";
 import type { GameState } from "../../src/game";
 
 type DebugWindow = Window & {

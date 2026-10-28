@@ -14,6 +14,7 @@ import { icon, sheep } from "./icons";
 import { MeadowAudio } from "./audio";
 import { BasketMotion } from "./basket";
 import { readProgress, saveProgress } from "./storage";
+import { MeadowTutorial } from "./tutorial";
 import {
   animate,
   flip,
@@ -65,9 +66,11 @@ app.innerHTML = `
     </section>
     <section class="game-column" aria-label="三消游戏">
       <div class="game-card">
+        <div class="game-summary">
         <div class="game-topline"><span class="level-tag" id="level-tag">第 01 关</span><button id="restart-button" class="icon-button small" aria-label="重新开始本关">${icon("reset")}</button></div>
         <div class="level-heading"><h2 id="level-name">初见牧场</h2><span id="remaining-count" class="remaining-count">${icon("leaf")}<b>36</b> / 36</span></div>
         <div class="progress-track" role="progressbar" aria-label="本关消除进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="level-progress"></div></div>
+        </div>
         <div class="board-wrap"><div id="board" class="board" aria-label="叠层牌区"></div><div class="board-doodle doodle-a">${icon("flower")}</div><div class="board-doodle doodle-b">${icon("leaf")}</div><div class="board-empty" id="board-empty" hidden>${icon("check")}<span>小美好，都收集好啦</span></div></div>
         <div class="tray-heading"><span id="tray-message">${icon("leaf")}<span>三张一样，就会有好事发生</span></span><span id="tray-count">0<span> / 7</span></span></div>
         <div id="rack" class="rack"><div class="rack-cells">${Array.from({ length: 7 }, () => "<span></span>").join("")}</div><div id="tray" class="tray" aria-label="7格暂存卡槽"></div></div>
@@ -96,6 +99,7 @@ app.innerHTML = `
 const element = <T extends HTMLElement = HTMLElement>(id: string) =>
   document.getElementById(id) as T;
 const modal = element<HTMLDialogElement>("modal");
+const tutorial = new MeadowTutorial();
 const basket = new BasketMotion(element("effects"), () => {
   renderTray();
   updateStats();
@@ -494,6 +498,16 @@ function showHelp() {
   showDialog(
     `<span class="modal-eyebrow">TAKE YOUR TIME</span><h2 id="modal-title">一点点牧场指南</h2><div class="help-steps"><p><b>01</b><span><strong>找三张一样的</strong>点击没有被遮挡的亮牌，放进下方卡槽；三张相同的牌会自动消除。</span></p><p><b>02</b><span><strong>给惊喜留点位置</strong>卡槽只有七格。放入第七张后若不能消除，本次挑战就结束啦。</span></p><p><b>03</b><span><strong>需要时，找小帮手</strong>挪出三张、撤回一步、重新洗牌，每关各一次。暂存小站里的牌也要取回消除。</span></p><p><b>04</b><span><strong>慢慢走，也可以走很远</strong>清空棋盘、卡槽与暂存小站即可通关。每日挑战按北京时间每天更新，同一天的初始牌局相同。</span></p></div><div class="settings-row"><span>${icon("sound")}游戏音效<small>轻轻的木琴声</small></span><button id="sound-setting" class="switch ${audio.enabled ? "on" : ""}" role="switch" aria-checked="${audio.enabled}" aria-label="游戏音效"><i></i></button></div><div class="settings-row"><span>${icon("leaf")}减少动态效果<small>${motionPreference.matches ? "系统已启用减少动画" : "保留每份美好，减少飞行与粒子"}</small></span><button id="motion-setting" class="switch ${progress.reducedMotion ? "on" : ""}" role="switch" aria-checked="${progress.reducedMotion}" aria-label="减少动态效果"><i></i></button></div><p class="dialog-footnote">原创牧场三消 · 无广告 · 无倒计时 · 进度保存在本机</p>`,
     () => {
+      const replay = document.createElement("button");
+      replay.type = "button";
+      replay.id = "tutorial-replay";
+      replay.className = "tutorial-replay";
+      replay.innerHTML = `${icon("help")} 再看一次新手引导 ${icon("arrow")}`;
+      element("modal-content").querySelector(".help-steps")!.before(replay);
+      replay.addEventListener("click", () => {
+        closeDialog();
+        tutorial.start();
+      });
       element("sound-setting").addEventListener("click", () => {
         toggleSound();
         element("sound-setting").classList.toggle("on", audio.enabled);
@@ -647,3 +661,4 @@ Object.defineProperty(window, "__MEADOW__", {
   },
   writable: false,
 });
+tutorial.showOnFirstVisit();
