@@ -5,15 +5,14 @@ import {
   LEVELS,
   BOARD_WIDTH,
   availableTiles,
-  dailySeed,
-  shanghaiDate,
+  levelVariant,
   type GameState,
 } from "./game";
 import { boardHeight } from "./layouts";
 import { icon, sheep } from "./icons";
 import { MeadowAudio } from "./audio";
 import { BasketMotion } from "./basket";
-import { readProgress, saveProgress } from "./storage";
+import { readProgress, saveProgress, advanceChallenge } from "./storage";
 import { MeadowTutorial } from "./tutorial";
 import {
   animate,
@@ -35,15 +34,9 @@ motionPreference.addEventListener("change", () =>
   setReducedMotion(progress.reducedMotion || motionPreference.matches),
 );
 
-let mode: "journey" | "daily" = "journey";
-let currentDay = shanghaiDate();
-let currentLevel = Math.min(
-  9,
-  Array.from({ length: 10 }, (_, i) => i).find(
-    (i) => !progress.completed.includes(i),
-  ) ?? 9,
-);
-let game = new Game(currentLevel);
+if (progress.completed.includes(1)) advanceChallenge(progress);
+let currentLevel = progress.completed.includes(0) ? 1 : 0;
+let game = new Game(currentLevel, progress.challengeSeed);
 let toolBusy = false;
 let notifiedMove = -1;
 let toastTimeout: ReturnType<typeof setTimeout>;
@@ -52,7 +45,7 @@ app.innerHTML = `
   <div class="landscape" aria-hidden="true"></div><div class="landscape-wash" aria-hidden="true"></div>
   <header class="site-header">
     <a class="brand" href="#" aria-label="羊咩咩首页">${sheep("brand-sheep")}<span class="brand-copy"><strong>羊咩咩<span class="brand-dot">.</span></strong><small>MEADOW MATCH</small></span></a>
-    <nav class="main-nav" aria-label="游戏模式"><button id="journey-nav" class="nav-item active">${icon("leaf")}<span>牧场漫游</span></button><button id="daily-nav" class="nav-item">${icon("sun")}<span>每日挑战</span><i class="new-dot"></i></button><button id="collection-nav" class="nav-item">${icon("book")}<span>牧场图鉴</span></button></nav>
+    <nav class="main-nav" aria-label="挑战入口"><button id="journey-nav" class="nav-item active">${icon("leaf")}<span>双关挑战</span></button><button id="new-round-nav" class="nav-item">${icon("sun")}<span>换一组挑战</span></button><button id="collection-nav" class="nav-item">${icon("book")}<span>牧场图鉴</span></button></nav>
     <div class="header-actions"><button id="sound-toggle" class="icon-button" aria-label="开启声音" aria-pressed="false">${icon("muted")}</button><button id="help-button" class="icon-button" aria-label="玩法与设置">${icon("help")}</button></div>
   </header>
   <main class="meadow-layout">
@@ -68,7 +61,7 @@ app.innerHTML = `
       <div class="game-card">
         <div class="game-summary">
         <div class="game-topline"><span class="level-tag" id="level-tag">第 01 关</span><button id="restart-button" class="icon-button small" aria-label="重新开始本关">${icon("reset")}</button></div>
-        <div class="level-heading"><h2 id="level-name">初见牧场</h2><span id="remaining-count" class="remaining-count">${icon("leaf")}<b>36</b> / 36</span></div>
+        <div class="level-heading"><h2 id="level-name">草莓初见</h2><span id="remaining-count" class="remaining-count">${icon("leaf")}<b>12</b> / 12</span></div>
         <div class="progress-track" role="progressbar" aria-label="本关消除进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="level-progress"></div></div>
         </div>
         <div class="board-wrap"><div id="board" class="board" aria-label="叠层牌区"></div><div class="board-doodle doodle-a">${icon("flower")}</div><div class="board-doodle doodle-b">${icon("leaf")}</div><div class="board-empty" id="board-empty" hidden>${icon("check")}<span>小美好，都收集好啦</span></div></div>
@@ -85,10 +78,10 @@ app.innerHTML = `
       <p class="tool-footnote">每种小帮手，每关可以使用一次</p>
     </section>
     <aside class="side-notes" aria-label="牧场手记与进度">
-      <div class="weather-note">${icon("sun")}<span>牧场晴天<small>适宜：放空与小小挑战</small></span></div>
+      <div class="weather-note">${icon("sun")}<span>牧场晴天<small>一关热身，一关认真挑战</small></span></div>
       <section class="field-note"><div class="note-pin"></div><div class="note-label">FIELD NOTES <span>01</span></div><h3>牧场小贴士</h3><div class="mini-match"><span class="mini-tile"><i class="tile-art" style="--col:0;--row:0"></i></span><span class="mini-tile"><i class="tile-art" style="--col:0;--row:0"></i></span><span class="mini-tile"><i class="tile-art" style="--col:0;--row:0"></i></span><b>✦</b></div><p id="strategy-tip">先观察，再点击。<br>给下一份小美好，<br>留一点位置。</p><span class="handwritten">慢一点，惊喜就多一点。</span></section>
-      <section class="journey-progress"><div class="journey-title"><span>${icon("leaf")}我的牧场足迹</span><b id="journey-count">0 / 10</b></div><div class="journey-dots" id="journey-dots"></div><button id="levels-button">去别处逛逛 ${icon("arrow")}</button></section>
-      <div class="daily-invite"><span class="daily-stamp">${icon("sun")}</span><div><strong>今日，来点新鲜的？</strong><p id="daily-invite-copy">每天一份专属小挑战</p></div><button id="daily-invite" aria-label="进入每日挑战">${icon("arrow")}</button></div>
+      <section class="journey-progress"><div class="journey-title"><span>${icon("leaf")}我的牧场足迹</span><b id="journey-count">0 / 2</b></div><div class="journey-dots" id="journey-dots"></div><button id="levels-button">去别处逛逛 ${icon("arrow")}</button></section>
+      <div class="daily-invite"><span class="daily-stamp">${icon("sun")}</span><div><strong>换一组，再试试？</strong><p id="rounds-copy">3套热身 · 6套极难题</p></div><button id="new-round-invite" aria-label="换一组挑战">${icon("arrow")}</button></div>
     </aside>
   </main>
   <footer class="site-footer"><span>用一点点专注，换一整颗好心情。</span><span>MADE FOR YOUR LITTLE BREAKS ${icon("leaf")}</span></footer>
@@ -210,13 +203,10 @@ function renderReserve() {
 
 function updateStats() {
   const state = game.state;
-  const config = LEVELS[state.level];
-  element("level-tag").textContent =
-    mode === "daily"
-      ? `${currentDay.slice(5).replace("-", "月")}日 · 每日挑战`
-      : `第 ${String(state.level + 1).padStart(2, "0")} 关`;
-  element("level-name").textContent =
-    mode === "daily" ? "今日牧场来信" : config.name;
+  const variant = levelVariant(state.level, state.seed);
+  element("level-tag").textContent = `第 ${state.level + 1} / 2 关 · ${LEVELS[state.level].name}`;
+  element("level-tag").classList.toggle("hard", state.level === 1);
+  element("level-name").textContent = variant.name;
   element("remaining-count").innerHTML =
     `${icon("leaf")}<b>${state.board.length + state.tray.length + state.reserve.length}</b> / ${state.tiles.length}`;
   const percent = Math.round((state.cleared / state.tiles.length) * 100);
@@ -261,16 +251,12 @@ function updateStats() {
     );
     button.classList.toggle("used", !state.tools[tool]);
   });
-  element("journey-count").textContent = `${progress.completed.length} / 10`;
+  element("journey-count").textContent = `${progress.completed.length} / 2`;
   element("journey-dots").innerHTML = LEVELS.map(
     (_, i) =>
-      `<span class="${progress.completed.includes(i) ? "completed" : i === currentLevel && mode === "journey" ? "current" : ""}"></span>`,
+      `<span class="${progress.completed.includes(i) ? "completed" : i === currentLevel ? "current" : ""}"></span>`,
   ).join("");
-  element("journey-nav").classList.toggle("active", mode === "journey");
-  element("daily-nav").classList.toggle("active", mode === "daily");
-  element("daily-invite-copy").textContent = progress.daily[shanghaiDate()]
-    ? "今日已收集，明天再来看看"
-    : "每天一份专属小挑战";
+  element("rounds-copy").textContent = `已通关 ${progress.roundsCleared} 轮 · 3套热身 / 6套极难`;
   element("board").setAttribute("aria-busy", String(isBusy()));
 }
 
@@ -444,46 +430,46 @@ async function useTool(tool: "remove" | "undo" | "shuffle") {
   element(`tool-${tool}`).addEventListener("click", () => void useTool(tool)),
 );
 
-function startLevel(level: number, nextMode: "journey" | "daily" = "journey") {
-  if (isBusy()) return;
+function startLevel(level: number) {
+  if (isBusy() || (level === 1 && !progress.completed.includes(0))) return;
   closeDialog();
   notifiedMove = -1;
-  mode = nextMode;
-  currentDay = shanghaiDate();
-  currentLevel = level;
-  game = new Game(
-    nextMode === "daily" ? 7 : level,
-    nextMode === "daily" ? dailySeed(currentDay) : undefined,
-  );
+  currentLevel = level === 1 ? 1 : 0;
+  game = new Game(currentLevel, progress.challengeSeed);
   render(true);
-  if (nextMode === "daily") toast(`${currentDay} 的牧场来信，每天都是新的牌局`);
+}
+
+function newChallenge() {
+  if (isBusy()) return;
+  const begin = () => {
+    advanceChallenge(progress);
+    persist();
+    startLevel(0);
+    toast("新的一组准备好啦：先热身，再挑战极难关");
+  };
+  if (!game.state.moves && !progress.completed.length || progress.completed.includes(1)) { begin(); return; }
+  showDialog(
+    `<div class="dialog-illustration">${sheep()}</div><span class="modal-eyebrow">A NEW LITTLE CHALLENGE</span><h2 id="modal-title">换一组挑战？</h2><p class="modal-intro">本轮会从简单关重新开始，<br>已通关的轮数会保留。原题还在等你，也可以继续研究。</p><button class="primary-button" id="confirm-new-round">换一组，从简单关开始 ${icon("arrow")}</button><button class="text-button" id="keep-round">继续这一组</button>`,
+    () => {
+      element("confirm-new-round").addEventListener("click", begin);
+      element("keep-round").addEventListener("click", closeDialog);
+    },
+  );
 }
 
 function showLevels() {
-  const unlocked = Math.min(
-    9,
-    Array.from({ length: 10 }, (_, i) => i).find(
-      (i) => !progress.completed.includes(i),
-    ) ?? 9,
-  );
+  const unlocked = progress.completed.includes(0) ? 1 : 0;
   showDialog(
-    `<span class="modal-eyebrow">YOUR LITTLE JOURNEY</span><h2 id="modal-title">去牧场走走</h2><p class="modal-intro">走过的每一步，都会开出小小的花。</p><div class="levels-grid">${LEVELS.map(
-      (level, i) => {
-        const complete = progress.completed.includes(i);
-        const locked = i > unlocked;
-        return `<button class="level-choice ${complete ? "complete" : ""}" data-level="${i}" ${locked ? "disabled" : ""}><span class="level-number">${locked ? icon("lock") : String(i + 1).padStart(2, "0")}</span><strong>${level.name}</strong><small>${complete ? `${icon("check")} 已收集` : locked ? "等待前一关解锁" : "新的小美好"}</small></button>`;
-      },
-    ).join(
-      "",
-    )}</div><p class="dialog-footnote">进度保存在当前浏览器 · 不需要登录</p>`,
+    `<span class="modal-eyebrow">TWO STAGES, ONE BIG CHALLENGE</span><h2 id="modal-title">这一轮，只有两关</h2><p class="modal-intro">第一关轻松上手。第二关，请认真想一想。<br>每一道极难题，都有可以走通的路。</p><div class="levels-grid">${LEVELS.map((level, i) => {
+      const complete = progress.completed.includes(i);
+      const locked = i > unlocked;
+      const variant = levelVariant(i, progress.challengeSeed);
+      return `<button class="level-choice ${complete ? "complete" : ""}" data-level="${i}" ${locked ? "disabled" : ""}><span class="level-number">${locked ? icon("lock") : String(i + 1).padStart(2, "0")}</span><strong>${level.name} · ${variant.name}</strong><small>${complete ? `${icon("check")} 已通过，可再挑战` : locked ? "先完成简单关" : i === 0 ? `${variant.tiles}张牌 · 轻松热身` : `${variant.tiles}张牌 · 12种图案 · 极难`}</small></button>`;
+    }).join("")}</div><button class="text-button" id="map-new-round">换一组挑战 ${icon("shuffle")}</button><p class="dialog-footnote">已通关 ${progress.roundsCleared} 轮 · 本轮题目与解锁进度保存在当前浏览器</p>`,
     () => {
-      document
-        .querySelectorAll<HTMLButtonElement>("[data-level]")
-        .forEach((button) =>
-          button.addEventListener("click", () =>
-            startLevel(Number(button.dataset.level)),
-          ),
-        );
+      document.querySelectorAll<HTMLButtonElement>("[data-level]").forEach((button) =>
+        button.addEventListener("click", () => startLevel(Number(button.dataset.level))));
+      element("map-new-round").addEventListener("click", newChallenge);
     },
   );
 }
@@ -496,7 +482,7 @@ function showCollection() {
 
 function showHelp() {
   showDialog(
-    `<span class="modal-eyebrow">TAKE YOUR TIME</span><h2 id="modal-title">一点点牧场指南</h2><div class="help-steps"><p><b>01</b><span><strong>找三张一样的</strong>点击没有被遮挡的亮牌，放进下方卡槽；三张相同的牌会自动消除。</span></p><p><b>02</b><span><strong>给惊喜留点位置</strong>卡槽只有七格。放入第七张后若不能消除，本次挑战就结束啦。</span></p><p><b>03</b><span><strong>需要时，找小帮手</strong>挪出三张、撤回一步、重新洗牌，每关各一次。暂存小站里的牌也要取回消除。</span></p><p><b>04</b><span><strong>慢慢走，也可以走很远</strong>清空棋盘、卡槽与暂存小站即可通关。每日挑战按北京时间每天更新，同一天的初始牌局相同。</span></p></div><div class="settings-row"><span>${icon("sound")}游戏音效<small>轻轻的木琴声</small></span><button id="sound-setting" class="switch ${audio.enabled ? "on" : ""}" role="switch" aria-checked="${audio.enabled}" aria-label="游戏音效"><i></i></button></div><div class="settings-row"><span>${icon("leaf")}减少动态效果<small>${motionPreference.matches ? "系统已启用减少动画" : "保留每份美好，减少飞行与粒子"}</small></span><button id="motion-setting" class="switch ${progress.reducedMotion ? "on" : ""}" role="switch" aria-checked="${progress.reducedMotion}" aria-label="减少动态效果"><i></i></button></div><p class="dialog-footnote">原创牧场三消 · 无广告 · 无倒计时 · 进度保存在本机</p>`,
+    `<span class="modal-eyebrow">TAKE YOUR TIME</span><h2 id="modal-title">一点点牧场指南</h2><div class="help-steps"><p><b>01</b><span><strong>找三张一样的</strong>点击没有被遮挡的亮牌，放进下方卡槽；三张相同的牌会自动消除。</span></p><p><b>02</b><span><strong>给惊喜留点位置</strong>卡槽只有七格。放入第七张后若不能消除，本次挑战就结束啦。</span></p><p><b>03</b><span><strong>需要时，找小帮手</strong>挪出三张、撤回一步、重新洗牌，每关各一次。暂存小站里的牌也要取回消除。</span></p><p><b>04</b><span><strong>慢慢走，也可以走很远</strong>每轮两关：先简单，再极难。清空牌区、卡槽与暂存小站即可通过本关。失败重试保留原题；换组从简单关重新开始。</span></p></div><div class="settings-row"><span>${icon("sound")}游戏音效<small>轻轻的木琴声</small></span><button id="sound-setting" class="switch ${audio.enabled ? "on" : ""}" role="switch" aria-checked="${audio.enabled}" aria-label="游戏音效"><i></i></button></div><div class="settings-row"><span>${icon("leaf")}减少动态效果<small>${motionPreference.matches ? "系统已启用减少动画" : "保留每份美好，减少飞行与粒子"}</small></span><button id="motion-setting" class="switch ${progress.reducedMotion ? "on" : ""}" role="switch" aria-checked="${progress.reducedMotion}" aria-label="减少动态效果"><i></i></button></div><p class="dialog-footnote">原创牧场三消 · 无广告 · 无倒计时 · 进度保存在本机</p>`,
     () => {
       const replay = document.createElement("button");
       replay.type = "button";
@@ -536,7 +522,7 @@ function showHelp() {
 function confirmRestart() {
   if (isBusy()) return;
   if (!game.state.moves) {
-    startLevel(currentLevel, mode);
+    startLevel(currentLevel);
     toast("新的一局准备好啦");
     return;
   }
@@ -544,7 +530,7 @@ function confirmRestart() {
     `<div class="dialog-illustration">${sheep()}</div><span class="modal-eyebrow">A FRESH LITTLE START</span><h2 id="modal-title">重新散个步？</h2><p class="modal-intro">本局进度会重新开始，<br>已经收集的牧场足迹会为你保留。</p><button class="primary-button" id="confirm-restart">重新开始 ${icon("reset")}</button><button class="text-button" id="cancel-restart">再想一想，继续这局</button>`,
     () => {
       element("confirm-restart").addEventListener("click", () =>
-        startLevel(currentLevel, mode),
+        startLevel(currentLevel),
       );
       element("cancel-restart").addEventListener("click", closeDialog);
     },
@@ -554,18 +540,11 @@ function confirmRestart() {
 async function onWin() {
   const finishedGame = game;
   const state = game.state;
-  if (mode === "journey") {
-    if (!progress.completed.includes(currentLevel))
-      progress.completed.push(currentLevel);
-    progress.bestMoves[currentLevel] = Math.min(
-      progress.bestMoves[currentLevel] ?? Infinity,
-      state.moves,
-    );
-  } else
-    progress.daily[currentDay] = Math.min(
-      progress.daily[currentDay] ?? Infinity,
-      state.moves,
-    );
+  if (!progress.completed.includes(currentLevel)) {
+    progress.completed.push(currentLevel);
+    if (currentLevel === 1) progress.roundsCleared++;
+  }
+  progress.bestMoves[currentLevel] = Math.min(progress.bestMoves[currentLevel] ?? Infinity, state.moves);
   persist();
   updateStats();
   audio.play("win");
@@ -574,15 +553,14 @@ async function onWin() {
   await pause(450);
   if (game !== finishedGame || modal.open) return;
   showDialog(
-    `<div class="dialog-illustration win-sheep">${sheep()}</div><span class="modal-eyebrow">GOOD THINGS COME IN THREES</span><h2 id="modal-title">好心情，收集成功！</h2><p class="modal-intro">${mode === "daily" ? "今天的牧场来信，已经被你温柔拆开。" : currentLevel === 9 ? "十段牧场时光，都变成了你的好心情。" : "又一份小美好，变成了你的牧场足迹。"}</p><div class="win-stats"><div><b>${state.cleared / 3}</b><span>份小美好</span></div><div><b>${state.moves}</b><span>次用心选择</span></div><div><b>${3 - Object.values(state.tools).reduce((a, b) => a + b, 0)}</b><span>次小帮手</span></div></div><button class="primary-button" id="next-level">${mode === "journey" && currentLevel < 9 ? "去下一片牧场" : "回牧场逛逛"} ${icon("arrow")}</button><button class="text-button" id="replay-level">再收集一次小美好</button>`,
+    `<div class="dialog-illustration win-sheep">${sheep()}</div><span class="modal-eyebrow">GOOD THINGS COME IN THREES</span><h2 id="modal-title">好心情，收集成功！</h2><p class="modal-intro">${currentLevel === 0 ? "热身完成。接下来的第二关，会难很多。" : "你把这道极难题走通了！这份好心情，值得庆祝。"}</p><div class="win-stats"><div><b>${state.cleared / 3}</b><span>份小美好</span></div><div><b>${state.moves}</b><span>次用心选择</span></div><div><b>${3 - Object.values(state.tools).reduce((a, b) => a + b, 0)}</b><span>次小帮手</span></div></div><button class="primary-button" id="next-level">${currentLevel === 0 ? "挑战第二关 · 极难" : "再来一轮新挑战"} ${icon("arrow")}</button><button class="text-button" id="replay-level">再收集一次小美好</button>`,
     () => {
       element("next-level").addEventListener("click", () => {
-        if (mode === "journey" && currentLevel < 9)
-          startLevel(currentLevel + 1);
-        else showLevels();
+        if (currentLevel === 0) startLevel(1);
+        else newChallenge();
       });
       element("replay-level").addEventListener("click", () =>
-        startLevel(currentLevel, mode),
+        startLevel(currentLevel),
       );
     },
   );
@@ -604,7 +582,7 @@ function onLost() {
         void useTool("undo");
       });
       element("retry-level").addEventListener("click", () =>
-        startLevel(currentLevel, mode),
+        startLevel(currentLevel),
       );
       element("lost-levels").addEventListener("click", showLevels);
     },
@@ -632,32 +610,23 @@ element("help-button").addEventListener("click", showHelp);
 element("restart-button").addEventListener("click", confirmRestart);
 element("journey-nav").addEventListener("click", showLevels);
 element("levels-button").addEventListener("click", showLevels);
-element("daily-nav").addEventListener("click", () => {
-  if (!isBusy()) startLevel(7, "daily");
-});
-element("daily-invite").addEventListener("click", () => {
-  if (!isBusy()) startLevel(7, "daily");
-});
+element("new-round-nav").addEventListener("click", newChallenge);
+element("new-round-invite").addEventListener("click", newChallenge);
 element("collection-nav").addEventListener("click", showCollection);
 document.querySelector(".brand")!.addEventListener("click", (event) => {
   event.preventDefault();
   showLevels();
 });
 
-// A stale daily board must never save a result under a different day's seed.
-document.addEventListener("visibilitychange", () => {
-  if (!document.hidden && mode === "daily" && shanghaiDate() !== currentDay)
-    toast("新一天的来信已到。当前牌局仍记在开始挑战的日期。");
-});
-
 render(true);
 updateSoundButton();
+persist();
 // Read-only observability for deterministic browser regression tests; no gameplay bypasses.
 Object.defineProperty(window, "__MEADOW__", {
   value: {
     getState: (): GameState => structuredClone(game.state),
     isBusy,
-    getMode: () => mode,
+    getMode: () => "challenge",
   },
   writable: false,
 });

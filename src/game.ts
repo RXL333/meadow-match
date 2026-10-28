@@ -1,8 +1,10 @@
 import { boardHeight, buildIrregularTiles } from "./layouts";
+import { LEVELS, levelVariant, normalizeLevel } from "./levels";
+export { LEVELS, LEVEL_POOLS, levelVariant } from "./levels";
 
 export const TILE_SIZE = 54;
 export const BOARD_WIDTH = 420;
-export const BOARD_HEIGHT = boardHeight(9);
+export const BOARD_HEIGHT = boardHeight(1);
 export const CAPACITY = 7;
 
 export const KINDS = [
@@ -20,35 +22,12 @@ export const KINDS = [
   { name: "羊毛球", color: "#c8bc9c" },
 ] as const;
 
-export const LEVELS = [
-  { name: "初见牧场", subtitle: "从三份小美好开始", kinds: 5, pressure: 2 },
-  { name: "草莓来信", subtitle: "藏在叶子下的小惊喜", kinds: 6, pressure: 2 },
-  { name: "午后微风", subtitle: "慢一点，也没有关系", kinds: 7, pressure: 3 },
-  { name: "麦田散步", subtitle: "给下一步留一点余地", kinds: 8, pressure: 3 },
-  { name: "蘑菇秘境", subtitle: "向更深处找找看", kinds: 9, pressure: 3 },
-  { name: "南瓜小屋", subtitle: "收好这份秋日礼物", kinds: 10, pressure: 4 },
-  { name: "林间拾光", subtitle: "让每一次选择都发光", kinds: 11, pressure: 4 },
-  {
-    name: "四叶心愿",
-    subtitle: "幸运也偏爱有准备的羊",
-    kinds: 12,
-    pressure: 4,
-  },
-  {
-    name: "云朵来客",
-    subtitle: "距离好消息又近了一点",
-    kinds: 12,
-    pressure: 5,
-  },
-  { name: "星光牧场", subtitle: "把整片星光收入囊中", kinds: 12, pressure: 5 },
-] as const;
-
 export interface Tile {
-  id: number;
+  readonly id: number;
   kind: number;
-  x: number;
-  y: number;
-  z: number;
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
 }
 export interface Tools {
   undo: number;
@@ -69,6 +48,7 @@ export interface GameState extends Snapshot {
   solution: number[];
   seed: number;
   level: number;
+  variant: string;
 }
 export interface MoveResult {
   accepted: boolean;
@@ -104,105 +84,111 @@ export function covers(upper: Tile, lower: Tile): boolean {
   );
 }
 
-export function availableTiles(
-  state: Pick<Snapshot, "tiles" | "board">,
-): number[] {
-  const present = new Set(state.board);
-  return state.board.filter(
-    (id) =>
-      !state.tiles.some(
-        (tile) => present.has(tile.id) && covers(tile, state.tiles[id]),
-      ),
-  );
-}
-
-function removalOrder(
-  tiles: Tile[],
-  ids: number[],
-  random: () => number,
-): number[] {
-  const remaining = [...ids];
-  const result: number[] = [];
-  while (remaining.length) {
-    const available = availableTiles({ tiles, board: remaining });
-    const chosen = available[Math.floor(random() * available.length)];
-    if (chosen === undefined) throw new Error("Invalid cyclic board");
-    result.push(chosen);
-    remaining.splice(remaining.indexOf(chosen), 1);
-  }
-  return result;
-}
-
-function boundedSequence(
-  groups: number,
-  kindCount: number,
-  pressure: number,
-  random: () => number,
-  tutorial: boolean,
-): number[] {
-  const result: number[] = [];
-  while (groups > 0) {
-    const size = tutorial && !result.length ? 1 : Math.min(groups, pressure);
-    const kinds = shuffleArray(
-      Array.from({ length: kindCount }, (_, i) => i),
-      random,
-    ).slice(0, size);
-    const batch = kinds.flatMap((kind) => [kind, kind, kind]);
-    let accepted: number[] | undefined;
-    for (let attempt = 0; attempt < 500; attempt++) {
-      const candidate = shuffleArray(batch, random);
-      const tray: number[] = [];
-      const valid = candidate.every((kind) => {
-        tray.push(kind);
-        if (tray.filter((k) => k === kind).length === 3) {
-          for (let i = tray.length - 1; i >= 0; i--)
-            if (tray[i] === kind) tray.splice(i, 1);
-        }
-        return tray.length < CAPACITY;
-      });
-      if (valid) {
-        accepted = candidate;
-        break;
+// Geometry never changes during play. A new array after undo/shuffle gets its own index.
+const geometry = new WeakMap<Tile[], { length: number; blockers: number[][]; below: number[][] }>();
+function geometryFor(tiles: Tile[]) {
+  let cached = geometry.get(tiles);
+  if (cached?.length === tiles.length) return cached;
+  const blockers = tiles.map(() => [] as number[]);
+  const below = tiles.map(() => [] as number[]);
+  for (const upper of tiles)
+    for (const lower of tiles)
+      if (covers(upper, lower)) {
+        blockers[lower.id].push(upper.id);
+        below[upper.id].push(lower.id);
       }
-    }
-    result.push(...(accepted ?? batch));
-    groups -= size;
+  cached = { length: tiles.length, blockers, below };
+  geometry.set(tiles, cached);
+  return cached;
+}
+
+export function availableTiles(state: Pick<Snapshot, "tiles" | "board">): number[] {
+  const present = new Set(state.board);
+  const { blockers } = geometryFor(state.tiles);
+  return state.board.filter((id) => !blockers[id].some((upper) => present.has(upper)));
+}
+
+function removalOrder(tiles: Tile[], ids: number[], random: () => number): number[] {
+  const { blockers, below } = geometryFor(tiles);
+  const present = new Set(ids);
+  const counts = tiles.map((tile) => blockers[tile.id].filter((id) => present.has(id)).length);
+  const ready = ids.filter((id) => counts[id] === 0);
+  const result: number[] = [];
+  while (ready.length) {
+    const index = Math.floor(random() * ready.length);
+    const [id] = ready.splice(index, 1);
+    result.push(id);
+    present.delete(id);
+    for (const lower of below[id])
+      if (present.has(lower) && --counts[lower] === 0) ready.push(lower);
   }
+  if (result.length !== ids.length) throw new Error("Invalid cyclic board");
   return result;
 }
 
-export function generateLevel(
-  level: number,
-  seed = 1026 + level * 7919,
-): GameState {
-  level = Math.max(0, Math.min(LEVELS.length - 1, Math.floor(level)));
-  const random = randomGenerator(seed);
-  const tiles = buildIrregularTiles(level, random);
-  const board = tiles.map((t) => t.id);
-  const solution = removalOrder(tiles, board, random);
-  const config = LEVELS[level];
-  const sequence = boundedSequence(
-    tiles.length / 3,
-    config.kinds,
-    config.pressure,
-    random,
-    level === 0,
-  );
-  solution.forEach((id, i) => {
-    tiles[id].kind = sequence[i];
-  });
+function kindSequence(groups: number, kindCount: number, random: () => number, hard: boolean, groupCounts?: number[]): number[] {
+  if (!hard) return Array.from({ length: groups }, (_, i) => Array(3).fill(i % kindCount)).flat();
+  const kinds = shuffleArray(Array.from({ length: kindCount }, (_, i) => i), random);
+  const unopened = groupCounts ? [...groupCounts] : Array(kindCount).fill(Math.floor(groups / kindCount)) as number[];
+  if (!groupCounts) for (let i = 0; i < groups % kindCount; i++) unopened[kinds[i]]++;
+  const carried = Array(kindCount).fill(0) as number[];
+  const lastUsed = Array(kindCount).fill(0) as number[];
+  const sequence: number[] = [];
+  let load = 0;
+  while (sequence.length < groups * 3) {
+    const grow = kinds.filter((kind) => {
+      if (load >= CAPACITY - 1 || carried[kind] === 2) return false;
+      if (carried[kind] === 0 && !unopened[kind]) return false;
+      // Six different singles would have no legal seventh card. Keep a pair available.
+      return load !== 5 || carried[kind] === 1 || carried.some((count) => count === 2);
+    });
+    const close = kinds.filter((kind) => carried[kind] === 2);
+    let kind: number;
+    if (grow.length) {
+      kind = grow[Math.floor(random() * grow.length)];
+    } else if (close.length) {
+      // Closing recent pairs keeps older unfinished matches in the basket across deeper layers.
+      close.sort((a, b) => lastUsed[b] - lastUsed[a]);
+      kind = close[Math.min(close.length - 1, Math.floor(random() * Math.min(2, close.length)))];
+    } else throw new Error("No safe continuation for certified sequence");
+    if (carried[kind] === 0) unopened[kind]--;
+    carried[kind]++;
+    load++;
+    lastUsed[kind] = sequence.length;
+    sequence.push(kind);
+    if (carried[kind] === 3) { carried[kind] = 0; load -= 3; }
+    if (load >= CAPACITY) throw new Error("Certified sequence overflow");
+  }
+  if (load) throw new Error("Unfinished certified sequence");
+  return sequence;
+}
+
+const templates = new Map<string, { tiles: Tile[]; solution: number[] }>();
+export function generateLevel(level: number, seed = 1026): GameState {
+  level = normalizeLevel(level);
+  seed = seed >>> 0;
+  const variant = levelVariant(level, seed);
+  let template = templates.get(variant.id);
+  if (!template) {
+    const random = randomGenerator(variant.seed);
+    const tiles = buildIrregularTiles(level, variant);
+    const solution = removalOrder(tiles, tiles.map((t) => t.id), random);
+    const sequence = kindSequence(tiles.length / 3, LEVELS[level].kinds, random, level === 1);
+    solution.forEach((id, i) => { tiles[id].kind = sequence[i]; });
+    template = { tiles, solution };
+    templates.set(variant.id, template);
+  }
+  // Mirroring and bijective symbol remapping preserve the certified puzzle and its difficulty.
+  const random = randomGenerator(seed ^ 0x93a7bc15);
+  const symbols = shuffleArray(Array.from({ length: KINDS.length }, (_, i) => i), random);
+  const mirror = random() < .5;
+  const tiles = template.tiles.map((tile) => ({
+    ...tile, kind: symbols[tile.kind], x: mirror ? BOARD_WIDTH - TILE_SIZE - tile.x : tile.x,
+  }));
   return {
-    tiles,
-    board,
-    tray: [],
-    reserve: [],
-    status: "playing",
-    moves: 0,
-    cleared: 0,
-    tools: { undo: 1, remove: 1, shuffle: 1 },
-    solution,
-    seed,
-    level,
+    tiles, board: tiles.map((t) => t.id), tray: [], reserve: [], status: "playing",
+    moves: 0, cleared: 0, tools: { undo: 1, remove: 1, shuffle: 1 },
+    solution: [...template.solution], seed, level, variant: variant.id,
   };
 }
 
@@ -237,6 +223,16 @@ export function createReshuffle(
   const solution: number[] = [];
   let cursor = 0;
   while (cursor < order.length || reserve.length) {
+    // Clear the fixed carried cards first, then keep the remaining hard puzzle interleaved.
+    // A shuffle must not turn the whole second stage into consecutive easy triples.
+    if (state.level === 1 && !tray.length && !reserve.length) {
+      if ([...counts.values()].some((count) => count % 3 !== 0)) return null;
+      const sequence = kindSequence((order.length - cursor) / 3, KINDS.length,
+        randomGenerator(seed ^ 0x72ab3159), true,
+        Array.from({ length: KINDS.length }, (_, kind) => (counts.get(kind) ?? 0) / 3));
+      order.slice(cursor).forEach((id, i) => { tiles[id].kind = sequence[i]; solution.push(id); });
+      return { tiles, solution };
+    }
     const targets = Array.from(
       new Set([
         ...tray,

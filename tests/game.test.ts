@@ -1,6 +1,8 @@
 import { describe, expect, test } from "vitest";
 import {
   Game,
+  LEVEL_POOLS,
+  levelVariant,
   availableTiles,
   createReshuffle,
   generateLevel,
@@ -13,7 +15,7 @@ import {
   type GameState,
   type Tile,
 } from "../src/game";
-import { boardHeight, LEVEL_TILE_COUNTS } from "../src/layouts";
+import { boardHeight } from "../src/layouts";
 
 function fixture(kinds: number[], tray: number[] = []): Game {
   const game = new Game(0);
@@ -107,141 +109,126 @@ describe("rules and transactions", () => {
   });
 });
 
-describe("generation and certified reshuffle", () => {
-  test("irregular layouts fit the board without overlapping cards in the same layer", () => {
-    for (let level = 0; level < 10; level++) {
-      for (let seed = 1; seed <= 40; seed++) {
-        const { tiles } = generateLevel(level, seed);
-        expect(tiles).toHaveLength(LEVEL_TILE_COUNTS[level]);
-        for (const tile of tiles) {
-          expect(tile.x).toBeGreaterThanOrEqual(0);
-          expect(tile.y).toBeGreaterThanOrEqual(0);
-          expect(tile.x + TILE_SIZE).toBeLessThanOrEqual(BOARD_WIDTH);
-          expect(tile.y + TILE_SIZE).toBeLessThanOrEqual(boardHeight(level));
-          expect(boardHeight(level)).toBeLessThanOrEqual(BOARD_HEIGHT);
-          for (const other of tiles) {
-            if (tile.id >= other.id || tile.z !== other.z) continue;
-            expect(
-              Math.abs(tile.x - other.x) >= TILE_SIZE ||
-                Math.abs(tile.y - other.y) >= TILE_SIZE,
-              `level ${level + 1}, seed ${seed}: same-layer cards ${tile.id} and ${other.id}`,
-            ).toBe(true);
-          }
+describe("two-stage certified puzzle bank", () => {
+  test("three easy and six hard templates stay inside the board without same-layer overlap", () => {
+    expect(LEVEL_POOLS.map((pool) => pool.length)).toEqual([3, 6]);
+    for (let level = 0; level < 2; level++) for (let seed = 0; seed < 36; seed++) {
+      const { tiles } = generateLevel(level, seed);
+      expect(tiles).toHaveLength(levelVariant(level, seed).tiles);
+      for (const tile of tiles) {
+        expect(tile.x).toBeGreaterThanOrEqual(0);
+        expect(tile.y).toBeGreaterThanOrEqual(0);
+        expect(tile.x + TILE_SIZE).toBeLessThanOrEqual(BOARD_WIDTH);
+        expect(tile.y + TILE_SIZE).toBeLessThanOrEqual(boardHeight(level));
+        for (const other of tiles) {
+          if (tile.id >= other.id || tile.z !== other.z) continue;
+          expect(Math.abs(tile.x - other.x) >= TILE_SIZE || Math.abs(tile.y - other.y) >= TILE_SIZE,
+            `${level}/${seed}: ${tile.id},${other.id}`).toBe(true);
         }
       }
     }
   });
-  test("reference layouts have a connected close-packed base and local caps across tile seams", () => {
-    for (let level = 0; level < 10; level++) {
-      const { tiles } = generateLevel(level);
-      const base = tiles.filter((tile) => tile.z === 0);
-      const visited = new Set([base[0].id]);
-      const pending = [base[0]];
+
+  test("all hard layouts retain connected seven-column bases, seam caps and two deep stacks", () => {
+    for (let i = 0; i < 6; i++) {
+      const state = generateLevel(1, i * 3);
+      const base = state.tiles.filter((tile) => tile.z === 0);
+      const visited = new Set([base[0].id]); const pending = [base[0]];
       while (pending.length) {
         const current = pending.pop()!;
         for (const tile of base) {
-          const dx = Math.abs(tile.x - current.x);
-          const dy = Math.abs(tile.y - current.y);
+          const dx = Math.abs(tile.x - current.x), dy = Math.abs(tile.y - current.y);
           if (!visited.has(tile.id) && ((dx === 55 && dy === 0) || (dy === 55 && dx === 0))) {
-            visited.add(tile.id);
-            pending.push(tile);
+            visited.add(tile.id); pending.push(tile);
           }
         }
       }
       expect(visited.size).toBe(base.length);
-      const cols = new Set(base.map((tile) => tile.x)).size;
-      const rows = new Set(base.map((tile) => tile.y)).size;
-      expect(cols).toBe(7);
-      expect(base.length / (cols * rows)).toBeGreaterThan(0.85);
-      const caps = tiles.filter((tile) => tile.z > 0 && tile.z < 8);
-      expect(caps.length).toBeGreaterThanOrEqual(6);
-      for (const cap of caps)
-        expect(base.filter((tile) => covers(cap, tile)).length).toBeGreaterThanOrEqual(2);
+      expect(new Set(base.map((tile) => tile.x)).size).toBe(7);
+      expect(base.length).toBe(52);
+      for (const cap of state.tiles.filter((tile) => tile.z > 0 && tile.z < 64))
+        expect(base.filter((tile) => covers(cap, tile)).length, `${state.variant}: cap ${cap.id} at ${cap.x},${cap.y}`).toBeGreaterThanOrEqual(2);
+      expect(state.tiles.filter((tile) => tile.z >= 64)).toHaveLength(LEVEL_POOLS[1][i].depth * 2);
     }
   });
-  test("the opening board offers two separate layered edge stacks", () => {
-    const state = generateLevel(0);
-    const stacks = availableTiles(state).filter(
-      (id) =>
-        state.tiles.filter(
-          (tile) =>
-            covers(state.tiles[id], tile) &&
-            Math.abs(tile.x - state.tiles[id].x) <= 12 &&
-            Math.abs(tile.y - state.tiles[id].y) <= 20,
-        ).length >= 2,
-    );
-    expect(stacks.length).toBeGreaterThanOrEqual(2);
-  });
-  test("reshuffling preserves the irregular geometry as well as tile counts", () => {
-    const game = new Game(9);
-    const geometry = game.state.tiles.map(({ id, x, y, z }) => ({
-      id,
-      x,
-      y,
-      z,
-    }));
-    expect(game.shuffle()).toBe(true);
-    expect(
-      game.state.tiles.map(({ id, x, y, z }) => ({ id, x, y, z })),
-    ).toEqual(geometry);
-  });
-  test("all 10 levels, across 40 seeds each, have a legal winning path", () => {
-    for (let level = 0; level < 10; level++)
-      for (let seed = 1; seed <= 40; seed++) {
-        const game = new Game(level, seed);
-        const solution = [...game.state.solution];
-        for (const id of solution) {
-          expect(availableTiles(game.state)).toContain(id);
-          expect(game.pick(id).accepted).toBe(true);
-          expect(game.state.status).not.toBe("lost");
-        }
-        expect(game.state.status).toBe("won");
-        expect(game.state.cleared).toBe(game.state.tiles.length);
-      }
-  }, 30000);
-  test("same seed produces the same board", () => {
-    expect(generateLevel(7, 123)).toEqual(generateLevel(7, 123));
-    expect(generateLevel(7, 123).tiles).not.toEqual(
-      generateLevel(7, 124).tiles,
-    );
-  });
-  test("shuffle preserves all tile counts and yields a legal winning path with a nonempty tray and reserve", () => {
-    for (let seed = 1; seed <= 50; seed++) {
-      const game = new Game(7, seed);
-      const start = [...game.state.solution];
-      start.slice(0, 4).forEach((id) => game.pick(id));
-      game.remove();
-      const kindBefore = multiset(game.state);
-      const fixedIds = [...game.state.tray, ...game.state.reserve];
-      const fixedKinds = fixedIds.map((id) => game.state.tiles[id].kind);
-      expect(game.shuffle()).toBe(true);
-      expect(multiset(game.state)).toEqual(kindBefore);
-      expect(fixedIds.map((id) => game.state.tiles[id].kind)).toEqual(
-        fixedKinds,
-      );
-      const solution = [...game.state.solution];
-      for (const id of solution) {
+
+  test("every pairing, mirror and symbol permutation has a complete legal no-tool winning path", () => {
+    const seen = [new Set<string>(), new Set<string>()];
+    for (let level = 0; level < 2; level++) for (let seed = 0; seed < 180; seed++) {
+      const game = new Game(level, seed); seen[level].add(game.state.variant);
+      for (const id of [...game.state.solution]) {
         expect(game.pick(id).accepted).toBe(true);
         expect(game.state.status).not.toBe("lost");
       }
       expect(game.state.status).toBe("won");
-      expect(game.state.tools.shuffle).toBe(0);
+      expect(game.state.tools).toEqual({ undo: 1, remove: 1, shuffle: 1 });
+    }
+    expect(seen.map((set) => set.size)).toEqual([3, 6]);
+  }, 30000);
+
+  test("easy stages are forgiving even with random legal choices", () => {
+    for (let seed = 0; seed < 60; seed++) {
+      const game = new Game(0, seed);
+      while (game.state.status === "playing") {
+        const available = availableTiles(game.state);
+        game.pick(available[(seed + game.state.moves * 7) % available.length]);
+      }
+      expect(game.state.status).toBe("won");
+    }
+  });
+
+  test("seeded replay is identical and a different pairing changes both stage templates", () => {
+    expect(generateLevel(1, 7)).toEqual(generateLevel(1, 7));
+    for (let seed = 0; seed < 18; seed++) {
+      expect(levelVariant(0, seed + 7).id).not.toBe(levelVariant(0, seed).id);
+      expect(levelVariant(1, seed + 7).id).not.toBe(levelVariant(1, seed).id);
+    }
+  });
+
+  test("hard shuffle preserves geometry and counts without dropping difficulty to easy triples", () => {
+    for (let variant = 0; variant < 6; variant++) {
+      const game = new Game(1, variant * 3);
+      const before = multiset(game.state);
+      const geometry = game.state.tiles.map(({ id, x, y, z }) => ({ id, x, y, z }));
+      expect(game.shuffle()).toBe(true);
+      expect(multiset(game.state)).toEqual(before);
+      expect(game.state.tiles.map(({ id, x, y, z }) => ({ id, x, y, z }))).toEqual(geometry);
+      let pressured = 0;
+      for (const id of [...game.state.solution]) {
+        expect(game.pick(id).accepted).toBe(true);
+        expect(game.state.status).not.toBe("lost");
+        if (game.state.tray.length >= 5) pressured++;
+      }
+      expect(game.state.status).toBe("won");
+      expect(pressured / game.state.tiles.length).toBeGreaterThan(.5);
+    }
+  });
+
+  test("shuffle with fixed tray and reserve preserves cards and a complete winning path", () => {
+    for (let seed = 0; seed < 36; seed++) {
+      const game = new Game(1, seed);
+      const start = [...game.state.solution];
+      start.slice(0, 4).forEach((id) => game.pick(id));
+      game.remove();
+      const before = multiset(game.state);
+      const fixed = [...game.state.tray, ...game.state.reserve];
+      const kinds = fixed.map((id) => game.state.tiles[id].kind);
+      expect(game.shuffle()).toBe(true);
+      expect(multiset(game.state)).toEqual(before);
+      expect(fixed.map((id) => game.state.tiles[id].kind)).toEqual(kinds);
+      for (const id of [...game.state.solution]) {
+        expect(game.pick(id).accepted).toBe(true);
+        expect(game.state.status).not.toBe("lost");
+      }
+      expect(game.state.status).toBe("won");
       expect(game.shuffle()).toBe(false);
     }
   });
-  test("six different tray cards cannot be rescued by shuffling and must not consume the tool", () => {
-    const game = fixture(
-      [0, 1, 2, 3, 4, 5, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5],
-      [0, 1, 2, 3, 4, 5],
-    );
+
+  test("six different singles cannot be rescued by a fake shuffle and consume no tool", () => {
+    const game = fixture([0,1,2,3,4,5,0,0,1,1,2,2,3,3,4,4,5,5], [0,1,2,3,4,5]);
     expect(createReshuffle(game.state, 42)).toBe(null);
     expect(game.shuffle()).toBe(false);
     expect(game.state.tools.shuffle).toBe(1);
-  });
-  test("daily reset is based on Shanghai midnight and deterministic per day", () => {
-    expect(shanghaiDate(new Date("2026-10-26T15:59:59Z"))).toBe("2026-10-26");
-    expect(shanghaiDate(new Date("2026-10-26T16:00:00Z"))).toBe("2026-10-27");
-    expect(dailySeed("2026-10-26")).toBe(dailySeed("2026-10-26"));
-    expect(dailySeed("2026-10-26")).not.toBe(dailySeed("2026-10-27"));
   });
 });

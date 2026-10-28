@@ -1,7 +1,7 @@
 import { icon, sheep } from "./icons";
 import "./tutorial.css";
 
-const SEEN_KEY = "meadow-match-tutorial-v1";
+const SEEN_KEY = "meadow-match-tutorial-v2";
 const steps = [
   {
     target: "#board",
@@ -35,8 +35,8 @@ const steps = [
     target: ".main-nav",
     label: "游戏模式",
     title: "想去哪片牧场？",
-    copy: "顶部的三个入口，可以随时切换。",
-    extra: `<div class="tutorial-list"><p>${icon("leaf")}<span><strong>牧场漫游</strong>选择已解锁的关卡，慢慢挑战10片牧场。</span></p><p>${icon("sun")}<span><strong>每日挑战</strong>每天一份新牌局，按北京时间更新。</span></p><p>${icon("book")}<span><strong>牧场图鉴</strong>认识全部12种小图案。</span></p></div>`,
+    copy: "顶部可以查看双关地图、换一组题，或打开图鉴。",
+    extra: `<div class="tutorial-list"><p>${icon("leaf")}<span><strong>双关挑战</strong>第一关热身，第二关极难；通过简单关后解锁。</span></p><p>${icon("sun")}<span><strong>换一组挑战</strong>重新分配简单题和难题，从第一关再开始。</span></p><p>${icon("book")}<span><strong>牧场图鉴</strong>认识全部12种小图案。</span></p></div>`,
   },
   {
     target: ".header-actions",

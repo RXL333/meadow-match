@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "./fixtures";
+import { test, expect, type Page, enterHard } from "./fixtures";
 import type { GameState } from "../../src/game";
 
 type DebugWindow = Window & {
@@ -95,8 +95,7 @@ test("picking preserves untouched board nodes during sustained play", async ({ p
 test("a dense board stays playable with normal motion and a throttled CPU", async ({ page, context }) => {
   test.setTimeout(90000);
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("./");
-  await page.getByRole("button", { name: "每日挑战", exact: true }).click();
+  await enterHard(page);
   const session = await context.newCDPSession(page);
   await session.send("Emulation.setCPUThrottlingRate", { rate: 4 });
   const solution = (await state(page)).solution;
@@ -110,7 +109,7 @@ test("a dense board stays playable with normal motion and a throttled CPU", asyn
   expect((await state(page)).status).toBe("playing");
   await expect(page.locator("#effects")).toBeEmpty({ timeout: 4000 });
   await test.info().attach("throttled-play.json", {
-    body: JSON.stringify({ cpuSlowdown: 4, tiles: 78, picks: 24, elapsedMs: Date.now() - started }),
+    body: JSON.stringify({ cpuSlowdown: 4, tiles: (await state(page)).tiles.length, picks: 24, elapsedMs: Date.now() - started }),
     contentType: "application/json",
   });
   await session.send("Emulation.setCPUThrottlingRate", { rate: 1 });

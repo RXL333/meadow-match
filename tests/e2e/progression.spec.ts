@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "./fixtures";
+import { test, expect, type Page, enterHard } from "./fixtures";
 import type { GameState } from "../../src/game";
 
 type DebugWindow = Window & {
@@ -21,59 +21,66 @@ async function completeLevel(page: Page) {
   ).toBeVisible();
 }
 
-test("all ten levels can be completed through the public interface", async ({
-  page,
-}) => {
+test("two-stage journey locks hard, completes both, counts once, and changes the pairing", async ({ page }) => {
   test.setTimeout(120000);
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("./");
-  for (let level = 0; level < 10; level++) {
-    if (level === 9) {
-      await page.evaluate(() => document.fonts.ready);
-      await page.screenshot({
-        path: "test-results/mobile-level-10.png",
-        fullPage: true,
-        animations: "disabled",
-      });
-      const visible = await page
-        .locator(".board-tile.available")
-        .evaluateAll((nodes) =>
-          nodes.every((node) => {
-            const rect = node.getBoundingClientRect();
-            return rect.x >= 0 && rect.right <= innerWidth;
-          }),
-        );
-      expect(visible).toBe(true);
-    }
-    await completeLevel(page);
-    await expect(page.locator("#journey-count")).toHaveText(
-      `${level + 1} / 10`,
-    );
-    if (level < 9)
-      await page.getByRole("button", { name: "去下一片牧场" }).click();
-  }
-  await page.getByRole("button", { name: "回牧场逛逛" }).click();
-  await expect(page.locator(".level-choice.complete")).toHaveCount(10);
+  await page.locator("#journey-nav").click();
+  await expect(page.locator(".level-choice")).toHaveCount(2);
+  await expect(page.locator('[data-level="1"]')).toBeDisabled();
+  await page.getByRole("button", { name: "关闭弹窗" }).click();
+  await completeLevel(page);
+  await expect(page.locator("#journey-count")).toHaveText("1 / 2");
+  await page.getByRole("button", { name: "挑战第二关 · 极难" }).click();
+  const hard = await page.evaluate(() => (window as DebugWindow).__MEADOW__.getState());
+  expect(hard.level).toBe(1);
+  expect(hard.tiles.length).toBeGreaterThanOrEqual(144);
+  await page.screenshot({ path: "test-results/mobile-hard.png", fullPage: true, animations: "disabled" });
+  await completeLevel(page);
+  await expect(page.locator("#journey-count")).toHaveText("2 / 2");
+  await expect(page.locator("#rounds-copy")).toContainText("已通关 1 轮");
+  await page.getByRole("button", { name: "再来一轮新挑战" }).click();
+  await expect(page.locator("#level-tag")).toContainText("简单关");
+  const next = await page.evaluate(() => (window as DebugWindow).__MEADOW__.getState());
+  expect(next.seed).not.toBe(hard.seed);
   await page.reload();
-  await expect(page.locator("#journey-count")).toHaveText("10 / 10");
+  expect((await page.evaluate(() => (window as DebugWindow).__MEADOW__.getState())).seed).toBe(next.seed);
+  await page.locator("#journey-nav").click();
+  await expect(page.locator('[data-level="1"]')).toBeDisabled();
+  await expect(page.locator("#modal-content")).toContainText("已通关 1 轮");
 });
 
-test("daily challenge completes with real clicks and retains a local result", async ({
-  page,
-}) => {
+test("changing an unfinished hard round asks first and relocks the second stage", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.goto("./");
-  await page.getByRole("button", { name: "每日挑战", exact: true }).click();
-  await completeLevel(page);
-  await expect(page.locator("#daily-invite-copy")).toHaveText(
-    "今日已收集，明天再来看看",
-  );
-  await page.reload();
-  await expect(page.locator("#daily-invite-copy")).toHaveText(
-    "今日已收集，明天再来看看",
-  );
+  await enterHard(page);
+  const before = await page.evaluate(() => (window as DebugWindow).__MEADOW__.getState());
+  await page.locator("#new-round-nav").click();
+  await page.getByRole("button", { name: "继续这一组" }).click();
+  expect(await page.evaluate(() => (window as DebugWindow).__MEADOW__.getState())).toEqual(before);
+  await page.locator("#new-round-nav").click();
+  await page.getByRole("button", { name: "换一组，从简单关开始" }).click();
+  const next = await page.evaluate(() => (window as DebugWindow).__MEADOW__.getState());
+  expect(next.level).toBe(0);
+  expect(next.seed).not.toBe(before.seed);
+  await page.locator("#journey-nav").click();
+  await expect(page.locator('[data-level="1"]')).toBeDisabled();
 });
+
+for (let variant = 0; variant < 6; variant++) {
+  test(`hard template ${variant + 1} is winnable with real card clicks and no tools`, async ({ page }) => {
+    test.setTimeout(90000);
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await enterHard(page, variant * 3);
+    await completeLevel(page);
+    const state = await page.evaluate(() => (window as DebugWindow).__MEADOW__.getState());
+    expect(state.status).toBe("won");
+    expect(state.tools).toEqual({ remove: 1, undo: 1, shuffle: 1 });
+    expect(state.cleared).toBe(state.tiles.length);
+    await expect(page.locator("#rounds-copy")).toContainText("已通关 1 轮");
+  });
+}
 
 test("keyboard navigation keeps help accessible and respects system reduced motion", async ({
   page,

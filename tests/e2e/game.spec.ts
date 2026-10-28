@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "./fixtures";
+import { test, expect, type Page, enterHard } from "./fixtures";
 import type { GameState } from "../../src/game";
 
 type DebugWindow = Window & {
@@ -26,8 +26,8 @@ test("desktop loads the complete original visual without broken assets or browse
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto("./");
-  await expect(page.getByRole("heading", { name: "初见牧场" })).toBeVisible();
-  await expect(page.locator(".board-tile")).toHaveCount(36);
+  await expect(page.getByRole("heading", { name: "草莓初见" })).toBeVisible();
+  await expect(page.locator(".board-tile")).toHaveCount(12);
   expect(await page.locator(".board-tile.available").count()).toBeGreaterThan(
     0,
   );
@@ -85,12 +85,12 @@ test("a complete level wins through actual card clicks, persists, and unlocks th
     page.getByRole("heading", { name: "好心情，收集成功！" }),
   ).toBeVisible();
   expect((await state(page)).status).toBe("won");
-  await expect(page.locator("#journey-count")).toHaveText("1 / 10");
+  await expect(page.locator("#journey-count")).toHaveText("1 / 2");
   await page.screenshot({ path: "test-results/victory.png", fullPage: true });
-  await page.getByRole("button", { name: "去下一片牧场" }).click();
-  await expect(page.getByRole("heading", { name: "草莓来信" })).toBeVisible();
+  await page.getByRole("button", { name: "挑战第二关 · 极难" }).click();
+  await expect(page.getByRole("heading", { name: "迷雾牧场" })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole("heading", { name: "草莓来信" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "迷雾牧场" })).toBeVisible();
 });
 
 test("undo, reserve and reshuffle operate through the UI and preserve a playable board", async ({
@@ -117,7 +117,7 @@ test("undo, reserve and reshuffle operate through the UI and preserve a playable
   ).toBeVisible();
 });
 
-test("mobile fits 320, 390 and 430 widths and supports settings, collection, daily and restart", async ({
+test("mobile fits 320, 390 and 430 widths and supports settings, collection, new rounds and replay", async ({
   page,
 }) => {
   const errors: string[] = [];
@@ -152,11 +152,11 @@ test("mobile fits 320, 390 and 430 widths and supports settings, collection, dai
     animations: "disabled",
   });
   await page.getByRole("button", { name: "关闭弹窗" }).click();
-  await page.getByRole("button", { name: "每日挑战", exact: true }).click();
+  await page.locator("#new-round-nav").click();
   const initial = (await state(page)).tiles;
   await expect(
-    page.getByRole("heading", { name: "今日牧场来信" }),
-  ).toBeVisible();
+    page.locator("#level-tag"),
+  ).toContainText("简单关");
   await clickTile(page, (await state(page)).solution[0]);
   await page.getByRole("button", { name: "重新开始本关" }).click();
   await expect(
@@ -187,34 +187,31 @@ test("normal animation completes a triple and accepts no duplicate rapid input",
   await expect(page.locator(".flying-tile")).toHaveCount(0);
 });
 
-test("a lost game can use its remaining remove tool and keep playing", async ({
-  page,
-}) => {
+test("hard failure retries the same puzzle and the remaining remove tool rescues play", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.goto("./");
-  for (let i = 0; i < 36; i++) {
-    const current = await state(page);
-    if (current.status !== "playing") break;
-    const available = await page
-      .locator(".board-tile.available")
-      .evaluateAll((nodes) =>
-        nodes.map((node) => Number((node as HTMLElement).dataset.id)),
-      );
-    const ranked = available.sort(
-      (a, b) =>
-        current.tray.filter(
-          (id) => current.tiles[id].kind === current.tiles[a].kind,
-        ).length -
-        current.tray.filter(
-          (id) => current.tiles[id].kind === current.tiles[b].kind,
-        ).length,
-    );
-    await clickTile(page, ranked[0]);
-  }
-  expect((await state(page)).status).toBe("lost");
-  await expect(
-    page.getByRole("heading", { name: "换条小路，再走走" }),
-  ).toBeVisible();
+  await enterHard(page);
+  const initial = await state(page);
+  const lose = async () => {
+    for (let i = 0; i < initial.tiles.length; i++) {
+      const current = await state(page);
+      if (current.status !== "playing") break;
+      const available = await page.locator(".board-tile.available").evaluateAll((nodes) =>
+        nodes.map((node) => Number((node as HTMLElement).dataset.id)));
+      available.sort((a, b) => current.tray.filter((id) => current.tiles[id].kind === current.tiles[a].kind).length -
+        current.tray.filter((id) => current.tiles[id].kind === current.tiles[b].kind).length);
+      await clickTile(page, available[0]);
+    }
+    expect((await state(page)).status).toBe("lost");
+    await expect(page.getByRole("heading", { name: "换条小路，再走走" })).toBeVisible();
+  };
+  await lose();
+  await page.getByRole("button", { name: "再出发一次" }).click();
+  const retry = await state(page);
+  expect(retry.seed).toBe(initial.seed);
+  expect(retry.tiles).toEqual(initial.tiles);
+  expect(retry.variant).toBe(initial.variant);
+  expect(retry.moves).toBe(0);
+  await lose();
   await page.getByRole("button", { name: "挪出三张，继续探索" }).click();
   expect((await state(page)).status).toBe("playing");
   expect((await state(page)).reserve).toHaveLength(3);

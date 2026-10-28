@@ -52,7 +52,7 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
     expect(await state(page)).toEqual(initial);
     expect(await page.evaluate(() => scrollY)).toBe(0);
     await page.reload();
-    await expect(page.locator(".board-tile")).toHaveCount(36);
+    await expect(page.locator(".board-tile")).toHaveCount(initial.tiles.length);
     await expect(page.locator("#tutorial")).not.toBeVisible();
     expect(errors).toEqual([]);
   });
@@ -106,7 +106,9 @@ test("replaying a dense board follows viewport changes without changing the game
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("./");
   await page.getByRole("button", { name: "跳过引导" }).click();
-  await page.getByRole("button", { name: "每日挑战", exact: true }).click();
+  const easy = await state(page);
+  for (const id of easy.solution) await page.locator(`.board-tile[data-id="${id}"]`).click();
+  await page.getByRole("button", { name: "挑战第二关 · 极难" }).click();
   const before = await state(page);
   await page.getByRole("button", { name: "玩法与设置" }).click();
   await page.getByRole("button", { name: "再看一次新手引导" }).click();

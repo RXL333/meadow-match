@@ -396,6 +396,11 @@ h3 {
   padding: 6px 10px;
   border-radius: 7px;
 }
+.level-tag.hard {
+  color: #8c5739;
+  background: #f2e2cc;
+  border: 1px solid #dfc49c80;
+}
 .level-heading {
   display: flex;
   align-items: center;

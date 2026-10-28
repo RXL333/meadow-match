@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "./fixtures";
+import { test, expect, type Page, enterHard } from "./fixtures";
 import type { GameState } from "../../src/game";
 
 type DebugWindow = Window & {
@@ -40,7 +40,7 @@ test("a whole mobile level accepts rapid taps without waiting for animation", as
   await page.goto("./");
   const solution = (await state(page)).solution;
   for (const id of solution) await tapTile(page, id);
-  expect((await state(page)).moves).toBe(36);
+  expect((await state(page)).moves).toBe(solution.length);
   await idle(page);
   await expect(page.getByRole("heading", { name: "好心情，收集成功！" })).toBeVisible();
   await expect(page.locator(".flying-tile,.tray-tile")).toHaveCount(0);
@@ -48,7 +48,7 @@ test("a whole mobile level accepts rapid taps without waiting for animation", as
 });
 
 test("two fast taps on a deep stack take two different cards", async ({ page }) => {
-  await page.goto("./");
+  await enterHard(page);
   const initial = await state(page);
   const top = initial.tiles.filter((tile) => tile.z >= 8).sort((a, b) => b.z - a.z)[0];
   const rect = (await page.locator(`.board-tile[data-id="${top.id}"]`).boundingBox())!;
@@ -57,7 +57,7 @@ test("two fast taps on a deep stack take two different cards", async ({ page }) 
   await page.touchscreen.tap(x, y);
   await page.touchscreen.tap(x, y);
   expect((await state(page)).moves).toBe(2);
-  expect((await state(page)).board).toHaveLength(34);
+  expect((await state(page)).board).toHaveLength(initial.board.length - 2);
   await idle(page);
   expect(new Set((await state(page)).tray).size).toBe(2);
 });
@@ -85,8 +85,8 @@ test("viewport changes redirect overlapping flights to the current basket", asyn
 });
 
 test("rapid input respects a full basket and can recover with tools", async ({ page }) => {
-  await page.goto("./");
-  for (let i = 0; i < 36; i++) {
+  await enterHard(page);
+  for (let i = 0; i < 204; i++) {
     const current = await state(page);
     if (current.status !== "playing") break;
     const available = await page.locator(".board-tile.available").evaluateAll((nodes) =>
@@ -147,8 +147,7 @@ test("a burst of suspended flights settles on backgrounding and remains playable
 test("a dense mobile board accepts bursts under fourfold CPU slowdown", async ({ page, context }) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.goto("./");
-  await page.getByRole("button", { name: "每日挑战", exact: true }).click();
+  await enterHard(page);
   const session = await context.newCDPSession(page);
   await session.send("Emulation.setCPUThrottlingRate", { rate: 4 });
   const solution = (await state(page)).solution;
